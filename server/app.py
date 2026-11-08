@@ -18,6 +18,7 @@ import os
 import re
 import secrets
 import threading
+import time
 import uuid
 from datetime import timedelta
 from functools import wraps
@@ -45,7 +46,16 @@ def _load_or_create_secret_key() -> bytes:
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = _load_or_create_secret_key()
-app.permanent_session_lifetime = timedelta(days=30)
+# A login lasts this long from the moment the password is entered, however
+# active you are - a hard cap, not an idle timeout. The server forgets the
+# key at that point (see _current_key) and the open page locks itself.
+SESSION_LIFETIME = timedelta(hours=2)
+app.permanent_session_lifetime = SESSION_LIFETIME
+# Don't push the cookie's expiry forward on every request - it should run
+# out when the server-side session does.
+app.config["SESSION_REFRESH_EACH_REQUEST"] = False
+_hours = SESSION_LIFETIME.total_seconds() / 3600
+_SESSION_LIFETIME_LABEL = f"{_hours:g} hour{'' if _hours == 1 else 's'}"  # "2 hours", for the UI
 # Behind Cloudflare/nginx doing TLS termination, set JOURNAL_COOKIE_SECURE=1
 # once that's confirmed working - left off by default so local/plain-HTTP
 # testing (and first-time LAN setup before HTTPS is wired up) isn't broken
@@ -56,19 +66,54 @@ _conn = db.connect(str(DB_PATH))
 _conn_lock = threading.Lock()  # sqlite3 connections aren't safe to share across threads unguarded
 
 # Opaque session token (the only thing that reaches the browser, inside the
-# signed session cookie) -> derived Fernet key (bytes, never leaves this
-# process). This is what "decrypts server-side, holds the key in server
-# memory for the session" means in code.
+# signed session cookie) -> (derived Fernet key, expiry on the monotonic
+# clock). The key never leaves this process. This is what "decrypts
+# server-side, holds the key in server memory for the session" means in code.
 _sessions = {}
+_sessions_lock = threading.Lock()
 
 _DATA_URI_RE = re.compile(r'src="data:image/[a-zA-Z0-9.+-]+;base64,([A-Za-z0-9+/=]+)"')
 
 
-def _current_key():
+def _start_session(key):
+    """Logs this browser in with `key`, dropping any expired sessions from
+    memory while we're here. Returns the response for the login request."""
+    token = secrets.token_urlsafe(32)
+    now = time.monotonic()
+    with _sessions_lock:
+        for old_token, (_, expires_at) in list(_sessions.items()):
+            if expires_at <= now:
+                del _sessions[old_token]
+        _sessions[token] = (key, now + SESSION_LIFETIME.total_seconds())
+    session.clear()
+    session.permanent = True
+    session["sid"] = token
+    return jsonify({"ok": True, "expires_in": int(SESSION_LIFETIME.total_seconds())})
+
+
+def _session_remaining():
+    """Seconds left on this browser's login, or None if it isn't logged in.
+    An expired session's key is forgotten on the spot."""
     token = session.get("sid")
     if token is None:
         return None
-    return _sessions.get(token)
+    with _sessions_lock:
+        entry = _sessions.get(token)
+        if entry is None:
+            return None
+        remaining = entry[1] - time.monotonic()
+        if remaining <= 0:
+            del _sessions[token]
+            return None
+    return remaining
+
+
+def _current_key():
+    if _session_remaining() is None:
+        return None
+    with _sessions_lock:
+        entry = _sessions.get(session.get("sid"))
+    return entry[0] if entry else None
 
 
 def require_auth(view):
@@ -117,8 +162,13 @@ def _guess_image_mime(raw: bytes) -> str:
 
 @app.route("/")
 def index():
-    if _current_key() is not None:
-        return render_template("app.html")
+    remaining = _session_remaining()
+    if remaining is not None:
+        return render_template(
+            "app.html",
+            session_expires_in=int(remaining),
+            session_lifetime_label=_SESSION_LIFETIME_LABEL,
+        )
     with _conn_lock:
         initialized = db.is_initialized(_conn)
     return render_template("login.html", initialized=initialized)
@@ -138,12 +188,7 @@ def setup_route():
             return jsonify({"error": "Journal is already set up"}), 400
         key = db.setup_password(_conn, password)
 
-    token = secrets.token_urlsafe(32)
-    _sessions[token] = key
-    session.clear()
-    session.permanent = True
-    session["sid"] = token
-    return jsonify({"ok": True})
+    return _start_session(key)
 
 
 @app.route("/login", methods=["POST"])
@@ -159,19 +204,15 @@ def login_route():
     if key is None:
         return jsonify({"error": "Incorrect password"}), 401
 
-    token = secrets.token_urlsafe(32)
-    _sessions[token] = key
-    session.clear()
-    session.permanent = True
-    session["sid"] = token
-    return jsonify({"ok": True})
+    return _start_session(key)
 
 
 @app.route("/logout", methods=["POST"])
 def logout_route():
     token = session.pop("sid", None)
     if token is not None:
-        _sessions.pop(token, None)
+        with _sessions_lock:
+            _sessions.pop(token, None)
     return jsonify({"ok": True})
 
 

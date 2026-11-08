@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2/dist/quill.snow.css">
 </head>
 <body>
-  <div class="app view-editor" id="app-root">
+  <div class="app view-editor" id="app-root" data-session-expires-in="{{ session_expires_in }}">
     <div class="mobile-toolbar">
       <button id="mobile-tab-calendar" class="mobile-tab" title="Calendar">Calendar</button>
       <button id="mobile-tab-editor" class="mobile-tab active" title="Entry">Entry</button>
@@ -53,7 +53,7 @@
   <div id="unlock-overlay" class="unlock-overlay" hidden>
     <form id="unlock-form" class="login-card">
       <h1>Session expired</h1>
-      <p class="hint">Unlock again to keep saving. Anything you haven't saved yet is still on this page.</p>
+      <p class="hint">Logins last {{ session_lifetime_label }}. Unlock to carry on - anything you haven't saved yet is still on this page.</p>
       <input type="password" id="unlock-password" placeholder="Password" autocomplete="current-password">
       <p id="unlock-error" class="error"></p>
       <button type="submit">Unlock</button>

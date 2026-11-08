@@ -93,6 +93,12 @@ button, select, input {
   padding: 16px;
   background: rgba(0, 0, 0, 0.6);
 }
+/* Opaque, unlike the conflict dialog: once the login has run out, the
+   entry shouldn't stay readable behind the prompt. */
+#unlock-overlay {
+  background: #1e1e1e;
+  z-index: 110; /* above the conflict dialog if both are up */
+}
 .unlock-overlay[hidden] {
   display: none;
 }

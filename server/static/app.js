@@ -270,6 +270,22 @@
     return unlockPromise;
   }
 
+  // Lock the page when the login runs out (a hard limit set by the server),
+  // rather than leaving the entry on screen until the next save happens to
+  // be refused. Timers can fire late after the computer sleeps, so coming
+  // back to the tab checks too.
+  let lockAt = Infinity;
+  let lockTimer = null;
+  function scheduleLock(seconds) {
+    clearTimeout(lockTimer);
+    lockAt = Date.now() + seconds * 1000;
+    lockTimer = setTimeout(promptUnlock, seconds * 1000);
+  }
+  scheduleLock(Number(appRoot.dataset.sessionExpiresIn));
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && Date.now() >= lockAt) promptUnlock();
+  });
+
   unlockForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     unlockError.textContent = "";
@@ -281,11 +297,12 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: unlockPassword.value }),
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
         unlockError.textContent = data.error || "Something went wrong.";
         return;
       }
+      scheduleLock(data.expires_in);
       unlockOverlay.hidden = true;
       unlockPassword.value = "";
       setStatus("");

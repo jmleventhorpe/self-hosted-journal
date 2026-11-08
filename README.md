@@ -81,8 +81,9 @@ durable - a password manager, or written down safely.
   when you switch pages or close the tab. The status bar shows "Saving…",
   "Saved", or "Not saved - retrying…" if the server can't be reached; unsaved
   text is kept and retried rather than lost.
-- If your session expires (e.g. the server restarted), an unlock prompt
-  appears over the page - unlock and pending saves go through.
+- A login lasts 2 hours from when you enter the password (or until the
+  server restarts). When it runs out the page locks itself, hiding the
+  entry behind an unlock prompt - unlock and pending saves go through.
 - Open on more than one device or tab? If a page was saved somewhere else
   since you opened it, your save is held back and you're shown both copies
   to choose from: keep yours, keep the other, or keep both. A tab you come
@@ -123,6 +124,8 @@ is only ever ciphertext without the password.
 - The derived key lives only in the server process's memory, scoped to an
   opaque session token in a signed cookie. The key itself never reaches
   the browser, and is never written to disk.
+- A login is a hard 2 hours (`SESSION_LIFETIME` in `server/app.py`), not an
+  idle timeout - after that the server forgets the key and the page locks.
 - No custom crypto anywhere - both scrypt and Fernet are established,
   independently reviewed primitives, not something invented for this app.
 - This is a deliberately low-effort security posture for a personal
