@@ -215,9 +215,17 @@ button, select, input {
   position: relative;
   text-align: center;
   padding: 8px 0;
+  border: none;
   border-radius: 4px;
+  background: transparent;
+  font: inherit;
   cursor: pointer;
   color: #cccccc;
+}
+.calendar-grid .day:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 1px;
+  z-index: 1;
 }
 .calendar-grid .day:hover {
   background: #2a2d2e;
@@ -284,8 +292,21 @@ button, select, input {
   border-bottom: 1px solid #3c3c3c;
 }
 
-.date-row h1 {
+.date-title {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.date-title .nav-btn {
+  font-size: 20px;
+  line-height: 1;
+  padding: 2px 10px;
+}
+
+.date-row h1 {
   text-align: center;
   font-size: 18px;
   font-weight: 600;
@@ -319,8 +340,15 @@ button, select, input {
   color: #a0a0a0;
   font-size: 12px;
   min-height: 1.4em;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
 }
-.status-bar.status-error {
+.word-count {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.status-bar .status-error {
   color: #f48771;
 }
 
@@ -415,6 +443,17 @@ button, select, input {
   .editor-panel {
     width: 100%;
     border-right: none;
+  }
+
+  .date-row {
+    padding: 8px;
+    gap: 4px;
+  }
+  .date-row h1 {
+    font-size: 15px;
+  }
+  .date-title .nav-btn {
+    padding: 2px 6px;
   }
 
   .app.view-calendar .editor-panel {

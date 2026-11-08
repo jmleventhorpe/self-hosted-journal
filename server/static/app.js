@@ -125,6 +125,9 @@
 
   const dateLabel = document.getElementById("date-label");
   const statusEl = document.getElementById("status");
+  const wordCountEl = document.getElementById("word-count");
+  const prevDayBtn = document.getElementById("prev-day");
+  const nextDayBtn = document.getElementById("next-day");
   const calendarGrid = document.getElementById("calendar-grid");
   const monthSelect = document.getElementById("month-select");
   const yearSelect = document.getElementById("year-select");
@@ -173,8 +176,14 @@
   // "Special pages" are entries not tied to a date, edited in the same
   // editor as any day - mirrors the desktop app's SPECIAL_PAGES.
   const SPECIAL_PAGES = {
-    template: { label: "Template", path: "/template", button: templateBtn },
-    info: { label: "Info", path: "/info", button: infoBtn },
+    template: {
+      label: "Template", path: "/template", button: templateBtn,
+      placeholder: "Write a template to import into entries…",
+    },
+    info: {
+      label: "Info", path: "/info", button: infoBtn,
+      placeholder: "Notes, lists, research - anything to keep handy…",
+    },
   };
 
   const today = new Date();
@@ -183,6 +192,7 @@
   let selectedDate = formatDate(today);
   let currentSpecialPage = null; // null, "template", or "info" - see SPECIAL_PAGES
   let entryDates = new Set();
+  let focusDate = null; // calendar day that keyboard focus last sat on - see renderCalendar
   let loading = false; // guards against autosave firing while we're loading content
   let autosaveTimer = null;
   // path -> storage HTML not yet confirmed saved by the server. Kept across
@@ -304,6 +314,9 @@
   }
 
   function renderCalendar() {
+    // Rebuilding the grid destroys the focused cell - remember whether
+    // keyboard focus was in it so we can put it back on the new one.
+    const hadFocus = calendarGrid.contains(document.activeElement);
     renderYearOptions();
     monthSelect.value = viewMonth;
     yearSelect.value = viewYear;
@@ -313,6 +326,7 @@
       const el = document.createElement("div");
       el.className = "weekday" + (i === 0 || i === 6 ? " weekend" : "");
       el.textContent = name;
+      el.setAttribute("aria-hidden", "true"); // each day's label already says its weekday
       calendarGrid.appendChild(el);
     });
 
@@ -323,31 +337,98 @@
     const startOffset = firstOfMonth.getDay(); // 0=Sun
     const gridStart = new Date(viewYear, viewMonth, 1 - startOffset);
 
+    // Roving tabindex: exactly one day is in the tab order - the last one
+    // focused if it's in this month, else the selected day, else the 1st.
+    const inViewMonth = (dateStr) => dateStr && dateStr.startsWith(formatDate(firstOfMonth).slice(0, 8));
+    const tabbableDate = inViewMonth(focusDate) ? focusDate
+      : inViewMonth(selectedDate) ? selectedDate
+      : formatDate(firstOfMonth);
+
     for (let i = 0; i < 42; i++) {
       const cellDate = new Date(gridStart);
       cellDate.setDate(gridStart.getDate() + i);
       const dateStr = formatDate(cellDate);
       const dow = cellDate.getDay();
+      const hasEntry = entryDates.has(dateStr);
+      const isSelected = !currentSpecialPage && dateStr === selectedDate;
 
-      const cell = document.createElement("div");
+      const cell = document.createElement("button");
+      cell.type = "button";
       cell.className = "day";
+      cell.dataset.date = dateStr;
+      cell.tabIndex = dateStr === tabbableDate ? 0 : -1;
       if (cellDate.getMonth() !== viewMonth) cell.classList.add("other-month");
       if (dow === 6) cell.classList.add("weekend");
       if (USAGE_DAYS.has(dow)) cell.classList.add("usage-day");
-      if (dateStr === todayStr) cell.classList.add("today");
-      if (!currentSpecialPage && dateStr === selectedDate) cell.classList.add("selected");
+      if (dateStr === todayStr) {
+        cell.classList.add("today");
+        cell.setAttribute("aria-current", "date");
+      }
+      if (isSelected) cell.classList.add("selected");
       cell.textContent = cellDate.getDate();
+      cell.setAttribute("aria-label", [
+        formatDateLabel(dateStr),
+        dateStr === todayStr && "today",
+        hasEntry && "has entry",
+        isSelected && "selected",
+      ].filter(Boolean).join(", "));
 
-      if (entryDates.has(dateStr)) {
+      if (hasEntry) {
         const dot = document.createElement("span");
         dot.className = "dot";
         cell.appendChild(dot);
       }
 
-      cell.addEventListener("click", () => switchToDate(dateStr));
+      cell.addEventListener("click", () => {
+        focusDate = dateStr;
+        switchToDate(dateStr);
+      });
       calendarGrid.appendChild(cell);
     }
+
+    if (hadFocus) {
+      const target = calendarGrid.querySelector(`.day[tabindex="0"]`);
+      if (target) target.focus();
+    }
   }
+
+  function daysInMonth(year, month) {
+    return new Date(year, month + 1, 0).getDate();
+  }
+
+  // Standard date-picker keys: arrows move by day/week, Home/End to the
+  // start/end of the week, PageUp/PageDown by month. Moving past the edge
+  // of the month brings the new month into view. Enter/Space select (the
+  // cells are buttons, so that comes for free).
+  calendarGrid.addEventListener("keydown", (event) => {
+    const cell = event.target.closest(".day");
+    if (!cell) return;
+    const [y, m, d] = cell.dataset.date.split("-").map(Number);
+    let next;
+    switch (event.key) {
+      case "ArrowLeft": next = new Date(y, m - 1, d - 1); break;
+      case "ArrowRight": next = new Date(y, m - 1, d + 1); break;
+      case "ArrowUp": next = new Date(y, m - 1, d - 7); break;
+      case "ArrowDown": next = new Date(y, m - 1, d + 7); break;
+      case "Home": next = new Date(y, m - 1, d - new Date(y, m - 1, d).getDay()); break;
+      case "End": next = new Date(y, m - 1, d + 6 - new Date(y, m - 1, d).getDay()); break;
+      case "PageUp":
+      case "PageDown": {
+        const delta = event.key === "PageUp" ? -1 : 1;
+        const first = new Date(y, m - 1 + delta, 1);
+        next = new Date(first.getFullYear(), first.getMonth(),
+          Math.min(d, daysInMonth(first.getFullYear(), first.getMonth())));
+        break;
+      }
+      default: return;
+    }
+    event.preventDefault();
+    focusDate = formatDate(next);
+    viewYear = next.getFullYear();
+    viewMonth = next.getMonth();
+    renderCalendar();
+  });
+
 
   async function flushPendingSave() {
     if (autosaveTimer) {
@@ -372,19 +453,35 @@
     selectedDate = dateStr;
     currentSpecialPage = null;
     Object.values(SPECIAL_PAGES).forEach((p) => p.button.classList.remove("active"));
-    importTemplateBtn.style.display = "";
-    dateLabel.textContent = formatDateLabel(dateStr);
+    updateHeader();
     await loadCurrent();
     renderCalendar();
     showMobileView("editor");
+  }
+
+  const ENTRY_PLACEHOLDER = "Start writing…";
+
+  // Everything above the editor that depends on which page is showing.
+  function updateHeader() {
+    const special = currentSpecialPage && SPECIAL_PAGES[currentSpecialPage];
+    dateLabel.textContent = special ? special.label : formatDateLabel(selectedDate);
+    importTemplateBtn.style.display = special ? "none" : "";
+    prevDayBtn.hidden = !!special;
+    nextDayBtn.hidden = !!special;
+    quill.root.setAttribute("data-placeholder", special ? special.placeholder : ENTRY_PLACEHOLDER);
+  }
+
+  function shiftDay(delta) {
+    if (currentSpecialPage) return;
+    const [y, m, d] = selectedDate.split("-").map(Number);
+    switchToDate(formatDate(new Date(y, m - 1, d + delta)));
   }
 
   async function showSpecialPage(pageName) {
     await flushPendingSave();
     currentSpecialPage = currentSpecialPage === pageName ? null : pageName;
     Object.entries(SPECIAL_PAGES).forEach(([name, p]) => p.button.classList.toggle("active", name === currentSpecialPage));
-    importTemplateBtn.style.display = currentSpecialPage ? "none" : "";
-    dateLabel.textContent = currentSpecialPage ? SPECIAL_PAGES[currentSpecialPage].label : formatDateLabel(selectedDate);
+    updateHeader();
     await loadCurrent();
     renderCalendar();
     showMobileView("editor");
@@ -408,11 +505,13 @@
       // whole document through Quill's normal setContents path instead.
       quill.clipboard.dangerouslyPasteHTML(toDisplayHtml(html), "silent");
       quill.enable();
+      updateWordCount(); // "silent" above means text-change didn't fire
     } catch (err) {
       // Never leave the previous page's content editable under this page's
       // label - the next autosave would write it to the wrong date.
       quill.setText("", "silent");
       quill.disable();
+      updateWordCount();
       setStatus("Couldn't load this page - check your connection and try again.", 0, true);
     } finally {
       loading = false;
@@ -474,12 +573,31 @@
 
   window.addEventListener("online", () => flushUnsaved());
 
-  quill.on("text-change", scheduleSave);
+  function updateWordCount() {
+    const words = quill.getText().split(/\s+/).filter(Boolean).length;
+    wordCountEl.textContent = words ? `${words} word${words === 1 ? "" : "s"}` : "";
+  }
+
+  quill.on("text-change", () => {
+    updateWordCount();
+    scheduleSave();
+  });
 
   document.getElementById("prev-month").addEventListener("click", () => {
     viewMonth -= 1;
     if (viewMonth < 0) { viewMonth = 11; viewYear -= 1; }
     renderCalendar();
+  });
+  prevDayBtn.addEventListener("click", () => shiftDay(-1));
+  nextDayBtn.addEventListener("click", () => shiftDay(1));
+  // Alt+PageUp/PageDown work from anywhere, including while typing. (Not
+  // Alt+arrows - those are the browser's Back/Forward.)
+  document.addEventListener("keydown", (event) => {
+    if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (event.key !== "PageUp" && event.key !== "PageDown") return;
+    if (!unlockOverlay.hidden || currentSpecialPage) return;
+    event.preventDefault();
+    shiftDay(event.key === "PageUp" ? -1 : 1);
   });
   document.getElementById("today-btn").addEventListener("click", () => switchToDate(formatDate(new Date())));
   document.getElementById("next-month").addEventListener("click", () => {
@@ -532,7 +650,7 @@
   });
 
   (async function init() {
-    dateLabel.textContent = formatDateLabel(selectedDate);
+    updateHeader();
     await refreshEntryDates();
     await loadCurrent();
     renderCalendar();

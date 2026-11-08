@@ -16,28 +16,35 @@
     </div>
     <div class="calendar-panel">
       <div class="calendar-nav">
-        <button id="prev-month" class="nav-btn" title="Previous month">◀</button>
-        <select id="month-select"></select>
-        <select id="year-select"></select>
+        <button id="prev-month" class="nav-btn" title="Previous month" aria-label="Previous month">◀</button>
+        <select id="month-select" aria-label="Month"></select>
+        <select id="year-select" aria-label="Year"></select>
         <span class="spacer"></span>
         <button id="today-btn" class="nav-btn today-btn" title="Go to today">Today</button>
-        <button id="next-month" class="nav-btn" title="Next month">▶</button>
+        <button id="next-month" class="nav-btn" title="Next month" aria-label="Next month">▶</button>
       </div>
       <div class="special-page-row">
         <button id="template-btn" class="template-toggle-btn" title="Edit the reusable template">Template</button>
         <button id="info-btn" class="template-toggle-btn" title="Quick-access notes and research">Info</button>
       </div>
-      <div id="calendar-grid" class="calendar-grid"></div>
+      <div id="calendar-grid" class="calendar-grid" role="group" aria-label="Calendar - arrow keys move between days"></div>
       <button id="logout-btn" class="logout-btn">Log out</button>
     </div>
 
     <div class="editor-panel">
       <div class="date-row">
-        <h1 id="date-label"></h1>
+        <div class="date-title">
+          <button id="prev-day" class="nav-btn" title="Previous day (Alt+PageUp)" aria-label="Previous day">‹</button>
+          <h1 id="date-label" aria-live="polite"></h1>
+          <button id="next-day" class="nav-btn" title="Next day (Alt+PageDown)" aria-label="Next day">›</button>
+        </div>
         <button id="import-template-btn" class="accent-btn">Import Template</button>
       </div>
       <div id="editor"></div>
-      <div id="status" class="status-bar"></div>
+      <div class="status-bar">
+        <span id="status" role="status"></span>
+        <span id="word-count" class="word-count"></span>
+      </div>
     </div>
   </div>
 
