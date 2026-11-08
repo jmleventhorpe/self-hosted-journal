@@ -12,12 +12,16 @@
 
   const quill = new Quill("#editor", {
     theme: "snow",
+    // Keeps the link bubble inside the editor instead of letting it slide
+    // under the calendar panel next to it.
+    bounds: "#editor",
     modules: {
       toolbar: [
         ["bold", "italic"],
         [{ header: [1, 2, 3, false] }],
         [{ size: ["small", false, "large", "huge"] }],
-        ["image"],
+        [{ list: "bullet" }, { list: "ordered" }],
+        ["link", "image"],
         ["clean"],
       ],
       // Images dragged or pasted in as files go through the same shrinking

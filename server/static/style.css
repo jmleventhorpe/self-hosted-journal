@@ -554,6 +554,37 @@ button, select, input {
   color: #d4d4d4;
   padding: 16px;
 }
+/* Links: Quill's default dark blue is hard to read on this background. */
+.ql-snow .ql-editor a {
+  color: #4fc1ff;
+}
+
+/* The bubble that appears when adding or clicking a link - white by
+   default in Quill's theme. Prefixed with #editor to outrank Quill's own
+   rules, since its stylesheet loads after this one. */
+#editor .ql-tooltip {
+  background: #252526;
+  border: 1px solid #3c3c3c;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  color: #cccccc;
+  z-index: 10;
+}
+#editor .ql-tooltip input[type=text] {
+  background: #3c3c3c;
+  color: #cccccc;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+}
+#editor .ql-tooltip input[type=text]:focus {
+  outline: none;
+  border-color: #007acc;
+}
+#editor .ql-tooltip a.ql-preview,
+#editor .ql-tooltip a.ql-action,
+#editor .ql-tooltip a.ql-remove {
+  color: #4fc1ff;
+}
+
 .ql-editor.ql-blank::before {
   color: #6a6a6a;
 }
