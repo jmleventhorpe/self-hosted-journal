@@ -25,16 +25,13 @@
 
   // --- Image sizing: newly inserted images are scaled to a sensible
   // default automatically, and a toolbar dropdown (next to Insert Image)
-  // rescales every image already in the entry. Mirrors the desktop app's
-  // Small/Standard/Large presets and area-based scaling (see editor.py's
-  // _scaled_size_for_area) so a tall photo and a wide screenshot picked at
-  // the same preset end up with a similar visual footprint.
+  // rescales every image already in the entry. Scaling is by area, so a
+  // tall photo and a wide screenshot picked at the same preset end up with
+  // a similar visual footprint.
   //
-  // Sized via the plain width/height HTML *attributes*, not CSS - that's
-  // what the desktop app's QTextImageFormat produces, and Qt's HTML
-  // renderer reliably reads that form but isn't guaranteed to honor
-  // arbitrary inline CSS. Using the same mechanism keeps images resized by
-  // either client fully interoperable with the other.
+  // Sized via the plain width/height HTML *attributes*, not CSS - Quill
+  // keeps those on <img> through its Delta model, and existing entries
+  // already store sizes that way.
   const STANDARD_IMAGE_AREA = 400 * 400;
   const IMAGE_RESIZE_PRESETS = [
     ["Small", STANDARD_IMAGE_AREA / 4],
@@ -174,7 +171,7 @@
   }
 
   // "Special pages" are entries not tied to a date, edited in the same
-  // editor as any day - mirrors the desktop app's SPECIAL_PAGES.
+  // editor as any day.
   const SPECIAL_PAGES = {
     template: {
       label: "Template", path: "/template", button: templateBtn,
@@ -223,7 +220,7 @@
 
   // Rewrite stored `src="<resource-id>"` images to a fetchable URL before
   // handing HTML to Quill, and reverse it before saving. The server always
-  // deals in bare resource ids (see server/app.py's _normalize_inline_images) -
+  // deals in bare resource ids (see server/app.py's _extract_inline_images) -
   // this rewriting is purely a browser-side concern.
   function toDisplayHtml(html) {
     return (html || "").replace(/src="([a-f0-9]{32})"/g, 'src="/images/$1"');
@@ -551,7 +548,7 @@
           const res = await api(path, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ html, images: {} }),
+            body: JSON.stringify({ html }),
           });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           // Only clear it if nothing newer for this page was queued meanwhile.
@@ -741,7 +738,7 @@
   importTemplateBtn.addEventListener("click", async () => {
     const res = await api("/template");
     const data = await res.json();
-    if (!data.html && !Object.keys(data.images).length) {
+    if (!data.html) {
       setStatus("No template saved yet - click Template to create one.", 3000);
       return;
     }
@@ -762,7 +759,7 @@
     const alreadyFailing = unsaved.size > 0;
     if (autosaveTimer) unsaved.set(currentPath(), editorStorageHtml());
     unsaved.forEach((html, path) => {
-      const blob = new Blob([JSON.stringify({ html, images: {} })], { type: "application/json" });
+      const blob = new Blob([JSON.stringify({ html })], { type: "application/json" });
       navigator.sendBeacon(path, blob);
     });
     // Saves were already failing, so the beacon probably will too - ask

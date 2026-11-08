@@ -1,7 +1,6 @@
 """
 Flask server owning journal.db - the only process that touches it.
-Serves both the web UI (calendar + Quill editor) and the JSON API used by
-the desktop app's HTTP-client db.py (at the repo root).
+Serves the web UI (calendar + Quill editor) and the small JSON API it uses.
 
 Run with: gunicorn --workers 1 --threads 4 --bind 0.0.0.0:8420 app:app
 
@@ -81,12 +80,13 @@ def require_auth(view):
     return wrapped
 
 
-def _normalize_inline_images(html, images):
-    """The web client (Quill) embeds images as inline base64 data URIs;
-    the desktop client sends them as separate resource-id-referenced
-    blobs. Normalize both into the same resource-id storage model here,
-    so a saved entry looks identical regardless of which client wrote it."""
-    images = dict(images)
+def _extract_inline_images(html):
+    """Quill embeds newly inserted images as inline base64 data URIs.
+    Pull each one out into its own encrypted row and point the HTML at it
+    by id instead, so entries stay small and an image is only fetched
+    (via /images/<id>) when it's displayed. Returns (html, {id: raw_bytes})
+    for the new images only - ones already stored are referenced by id."""
+    images = {}
 
     def _extract(match):
         try:
@@ -113,10 +113,6 @@ def _guess_image_mime(raw: bytes) -> str:
     return "application/octet-stream"
 
 
-def _encode_images(images: dict) -> dict:
-    return {image_id: base64.b64encode(data).decode("ascii") for image_id, data in images.items()}
-
-
 # ---------------------------------------------------------------- Pages
 
 @app.route("/")
@@ -129,13 +125,6 @@ def index():
 
 
 # ---------------------------------------------------------------- Auth
-
-@app.route("/api/status")
-def status_route():
-    with _conn_lock:
-        initialized = db.is_initialized(_conn)
-    return jsonify({"initialized": initialized})
-
 
 @app.route("/api/setup", methods=["POST"])
 def setup_route():
@@ -245,88 +234,64 @@ def search_route():
     return jsonify({"results": results, "truncated": truncated})
 
 
+def _get_page(page_key):
+    key = _current_key()
+    with _conn_lock:
+        html = db.get_entry(_conn, key, page_key)
+    return jsonify({"html": html})
+
+
+def _save_page(page_key):
+    """Saves the posted HTML for a day or special page; a blank page is
+    deleted outright rather than stored, so it doesn't count as an entry."""
+    key = _current_key()
+    body = request.get_json(force=True, silent=True) or {}
+    html, images = _extract_inline_images(body.get("html") or "")
+    with _conn_lock:
+        if html.strip():
+            db.save_entry(_conn, key, page_key, html, images)
+        else:
+            db.delete_entry(_conn, page_key)
+    return jsonify({"ok": True})
+
+
 @app.route("/entries/<date>", methods=["GET"])
 @require_auth
 def get_entry_route(date):
-    key = _current_key()
-    with _conn_lock:
-        html, images = db.get_entry(_conn, key, date)
-    return jsonify({"html": html, "images": _encode_images(images)})
+    return _get_page(date)
 
 
 @app.route("/entries/<date>", methods=["POST"])
 @require_auth
 def save_entry_route(date):
-    key = _current_key()
-    body = request.get_json(force=True, silent=True) or {}
-    html = body.get("html") or ""
-    images = {k: base64.b64decode(v) for k, v in (body.get("images") or {}).items()}
-    html, images = _normalize_inline_images(html, images)
-
-    with _conn_lock:
-        if html.strip() or images:
-            db.save_entry(_conn, key, date, html, images)
-        else:
-            db.delete_entry(_conn, date)
-    return jsonify({"ok": True})
+    return _save_page(date)
 
 
-@app.route("/entries/<date>", methods=["DELETE"])
-@require_auth
-def delete_entry_route(date):
-    with _conn_lock:
-        db.delete_entry(_conn, date)
-    return jsonify({"ok": True})
-
-
-# ---------------------------------------------------------------- Template
+# ---------------------------------------------------------------- Template and Info
+# Pages not tied to a date, stored as entries under sentinel keys.
 
 @app.route("/template", methods=["GET"])
 @require_auth
 def get_template_route():
-    key = _current_key()
-    with _conn_lock:
-        html, images = db.get_template(_conn, key)
-    return jsonify({"html": html, "images": _encode_images(images)})
+    return _get_page(db.TEMPLATE_KEY)
 
 
 @app.route("/template", methods=["POST"])
 @require_auth
 def save_template_route():
-    key = _current_key()
-    body = request.get_json(force=True, silent=True) or {}
-    html = body.get("html") or ""
-    images = {k: base64.b64decode(v) for k, v in (body.get("images") or {}).items()}
-    html, images = _normalize_inline_images(html, images)
+    return _save_page(db.TEMPLATE_KEY)
 
-    with _conn_lock:
-        db.save_template(_conn, key, html, images)
-    return jsonify({"ok": True})
-
-
-# ---------------------------------------------------------------- Info
 
 @app.route("/info", methods=["GET"])
 @require_auth
 def get_info_route():
-    key = _current_key()
-    with _conn_lock:
-        html, images = db.get_info(_conn, key)
-    return jsonify({"html": html, "images": _encode_images(images)})
+    return _get_page(db.INFO_KEY)
 
 
 @app.route("/info", methods=["POST"])
 @require_auth
 def save_info_route():
-    key = _current_key()
-    body = request.get_json(force=True, silent=True) or {}
-    html = body.get("html") or ""
-    images = {k: base64.b64decode(v) for k, v in (body.get("images") or {}).items()}
-    html, images = _normalize_inline_images(html, images)
-
-    with _conn_lock:
-        db.save_info(_conn, key, html, images)
-    return jsonify({"ok": True})
+    return _save_page(db.INFO_KEY)
 
 
 # ---------------------------------------------------------------- Images

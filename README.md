@@ -1,7 +1,7 @@
 # Journal
 
-A small, encrypted journal: a PySide6 desktop app talking over HTTP to a
-Flask server that owns the actual database and does all the encryption.
+A small, encrypted journal you use in the browser: a Flask server that owns
+the database, does all the encryption, and serves the web app.
 No cloud, no third-party sync - the server is yours, wherever you run it.
 
 ## Architecture
@@ -11,16 +11,10 @@ Flask server (server/app.py)         <- the only process that ever touches journ
   owns journal.db, decrypts entries server-side,
   holds the decryption key in memory for your session only
     |
-    | HTTP (JSON API + a small web UI)
+    | HTTP (a small web UI + the JSON API it uses)
     |
-    +-- Desktop app (app/main.py)      <- PySide6 client, talks to the server via app/db.py
-    +-- Web browser                   <- calendar + Quill.js editor, served by the same Flask app
+    +-- Web browser                   <- calendar + Quill.js editor
 ```
-
-`app/db.py` is an HTTP client with the exact same function signatures the
-original SQLite version had, so the desktop UI code (`window.py`,
-`editor.py`, etc.) doesn't know or care that entries live on a server now
-instead of a local file.
 
 ## Running the server
 
@@ -67,67 +61,41 @@ your other self-hosted services applies here too. `JOURNAL_COOKIE_SECURE=1`
 should be set once it's actually served over HTTPS (see the comment next to
 it in `app.py` for why it's off by default).
 
-## Running the desktop client
+## First run
 
-```bash
-cd app
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-JOURNAL_SERVER_URL=http://your-server:8420 python3 main.py
-```
-
-Defaults to `http://localhost:8420` if `JOURNAL_SERVER_URL` isn't set.
-
-First run against a fresh server asks you to set a password - this is what
-encrypts everything server-side. **There is no password recovery.** If you
-lose it, your entries are gone for good (a consequence of real encryption,
-not a missing feature). Keep it somewhere durable - a password manager, or
-written down safely.
-
-### Optional: a desktop launcher
-
-```ini
-[Desktop Entry]
-Type=Application
-Name=Journal
-Exec=/full/path/to/Journal/app/venv/bin/python /full/path/to/Journal/app/main.py
-Icon=/full/path/to/Journal/app/assets/icon.svg
-Path=/full/path/to/Journal/app
-Terminal=false
-Categories=Office;
-```
-
-Save as `~/.local/share/applications/journal.desktop`, swap in your actual
-path, and it'll show up in your app launcher like any other installed
-program. Set `JOURNAL_SERVER_URL` in your shell profile (or add
-`Environment=` lines / wrap the `Exec` in `env`) if it's not `localhost`.
+Open the server's URL in a browser. Against a fresh server it asks you to
+set a password - this is what encrypts everything server-side. **There is
+no password recovery.** If you lose it, your entries are gone for good (a
+consequence of real encryption, not a missing feature). Keep it somewhere
+durable - a password manager, or written down safely.
 
 ## Using it
 
-- Click a date on the calendar to jump to that day's entry, or use the
-  month/year dropdowns and ◀/▶ to navigate.
+- Click a date on the calendar to open that day's entry, or use the
+  month/year dropdowns, ◀/▶ and **Today** to move around. The calendar
+  works from the keyboard too: arrow keys move by day/week, Home/End to the
+  start/end of the week, PageUp/PageDown by month, Enter to open.
+- **‹ ›** beside the date heading (or Alt+PageUp / Alt+PageDown from
+  anywhere) step to the previous/next day.
 - Type - it autosaves about a second after you stop typing, and also saves
-  when you switch dates, toggle the template, or close the app.
-- Right-click the entry for formatting: **Bold**, *Italic*, headings, font
-  size, font family, and (right-click an image) resize presets.
-- Drag an image file into the entry to embed it - it's scaled to a
-  reasonable default size automatically; right-click it to resize.
-- Misspelled words (desktop app only) get a red squiggly underline as you
-  type; right-click one for suggested corrections or to add it to the
-  session dictionary (handy for names and journal-specific terms).
+  when you switch pages or close the tab. The status bar shows "Saving…",
+  "Saved", or "Not saved - retrying…" if the server can't be reached; unsaved
+  text is kept and retried rather than lost.
+- If your session expires (e.g. the server restarted), an unlock prompt
+  appears over the page - unlock and pending saves go through.
+- Toolbar: **Bold**, *Italic*, headings, font size, insert image, and
+  **Resize Images** (Small/Standard/Large) for every image in the entry.
+  Inserted images are scaled to a reasonable default automatically.
+- **Search entries** (under Template/Info) finds entries containing every
+  word you type; click a result to open it, Escape to get the calendar back.
 - **Template** and **Info** (top of the calendar panel) each switch to a
   reusable page not tied to any date, edited exactly like any day's entry -
-  Template for a reusable starting point (see Import Template below), Info
-  for whatever you want at hand for quick reference (research notes, links,
-  whatever). **Import Template** (top of the entry pane) inserts the
-  template into whatever day you're on.
-- Dates with an entry are marked with a small dot on the calendar.
-- Window size and the calendar/editor split are remembered between runs.
-
-The web UI (open the server's URL in a browser) covers the same core
-flow - calendar, entry editor, template, info - via Quill.js instead of the
-desktop's native text widget.
+  Template for a reusable starting point, Info for whatever you want at hand
+  for quick reference. **Import Template** inserts the template into
+  whatever day you're on.
+- Dates with an entry are marked with a small dot on the calendar. Clearing
+  an entry completely deletes it.
+- On a phone, the calendar and the entry are separate tabs.
 
 ## Where your data lives
 
@@ -150,7 +118,7 @@ is only ever ciphertext without the password.
   "verifier" token used to check a password is correct on unlock.
 - The derived key lives only in the server process's memory, scoped to an
   opaque session token in a signed cookie. The key itself never reaches
-  the browser or the desktop client, and is never written to disk.
+  the browser, and is never written to disk.
 - No custom crypto anywhere - both scrypt and Fernet are established,
   independently reviewed primitives, not something invented for this app.
 - This is a deliberately low-effort security posture for a personal
@@ -161,9 +129,6 @@ is only ever ciphertext without the password.
 ## Repo layout
 
 ```
-app/main.py, window.py, editor.py, calendar_widget.py,
-    dialogs.py, theme.py, paths.py    desktop app (PySide6)
-app/db.py                             HTTP client the desktop app talks to db through
 server/app.py                         Flask server - the only thing that touches journal.db
 server/db.py, server/crypto.py        SQLite storage + encryption (server-side only)
 server/templates/, server/static/     web UI (calendar + Quill.js editor)
@@ -172,10 +137,10 @@ server/Dockerfile, docker-compose.example.yml
 
 ## Extending it later
 
-- **Search**: would need a plaintext (or per-word hashed) index alongside
-  the encrypted content - its own design tradeoff between searchability
-  and what stays encrypted, worth deciding deliberately rather than
-  bolting on.
+- **Faster search**: search currently decrypts every entry per query, which
+  is fine at one person's scale. A large journal would want an index - a
+  tradeoff between speed and what stays encrypted, worth deciding
+  deliberately.
 - **Password change**: re-encrypt the verifier and all existing
   entries/images under a new key derived from the new password.
 - **Rate limiting on /login**: currently unlimited attempts - fine for a

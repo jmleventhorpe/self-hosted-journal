@@ -1,7 +1,6 @@
 """
 SQLite storage for Journal, owned exclusively by the Flask server (app.py).
-Nothing else touches journal.db directly - the desktop app talks to this
-over HTTP via the client db.py at the repo root.
+Nothing else touches journal.db directly.
 
 One row per day in `entries` (encrypted rich-text HTML as a blob).
 Images embedded in an entry are extracted and stored encrypted in
@@ -25,7 +24,7 @@ from crypto import (
 
 TEMPLATE_KEY = "__template__"  # sentinel "date" in entries, never a real calendar day
 INFO_KEY = "__info__"  # sentinel "date" for the free-form reference/notes page
-IMG_SRC_RE = re.compile(r'src="([^"]+)"')  # same pattern as the desktop app's window.py
+IMG_SRC_RE = re.compile(r'src="([^"]+)"')  # image ids referenced by an entry's HTML
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -48,8 +47,7 @@ CREATE TABLE IF NOT EXISTS images (
 
 def connect(path: str) -> sqlite3.Connection:
     # check_same_thread=False: the Flask server handles requests on
-    # different threads (gunicorn --threads, or the dev server), unlike
-    # the desktop app this function originally served. Safe here because
+    # different threads (gunicorn --threads, or the dev server). Safe because
     # every caller of this connection serializes access with a lock
     # (see _conn_lock in app.py) - sqlite3 itself just can't know that.
     conn = sqlite3.connect(path, check_same_thread=False)
@@ -102,18 +100,12 @@ def list_entries(conn: sqlite3.Connection, key: bytes) -> list:
 
 
 def get_entry(conn: sqlite3.Connection, key: bytes, date: str):
-    """Returns (html_text, {image_id: raw_bytes}) or (None, {}) if no entry exists."""
+    """Returns the entry's decrypted HTML, or None if no entry exists.
+    Images aren't included - they're fetched one by one via get_image."""
     row = conn.execute("SELECT content FROM entries WHERE date = ?", (date,)).fetchone()
     if row is None:
-        return None, {}
-    html = decrypt_text(key, bytes(row[0]))
-
-    images = {}
-    for img_id, data in conn.execute(
-        "SELECT id, data FROM images WHERE entry_date = ?", (date,)
-    ).fetchall():
-        images[img_id] = decrypt_bytes(key, bytes(data))
-    return html, images
+        return None
+    return decrypt_text(key, bytes(row[0]))
 
 
 def save_entry(conn: sqlite3.Connection, key: bytes, date: str, html_text: str, images: dict):
@@ -165,27 +157,3 @@ def get_image(conn: sqlite3.Connection, key: bytes, image_id: str):
     if row is None:
         return None
     return decrypt_bytes(key, bytes(row[0]))
-
-
-def get_template(conn: sqlite3.Connection, key: bytes):
-    """Returns (html_text, {image_id: raw_bytes}) or (None, {}) if no template is saved."""
-    return get_entry(conn, key, TEMPLATE_KEY)
-
-
-def save_template(conn: sqlite3.Connection, key: bytes, html_text: str, images: dict):
-    if html_text.strip() or images:
-        save_entry(conn, key, TEMPLATE_KEY, html_text, images)
-    else:
-        delete_entry(conn, TEMPLATE_KEY)
-
-
-def get_info(conn: sqlite3.Connection, key: bytes):
-    """Returns (html_text, {image_id: raw_bytes}) or (None, {}) if no info page is saved."""
-    return get_entry(conn, key, INFO_KEY)
-
-
-def save_info(conn: sqlite3.Connection, key: bytes, html_text: str, images: dict):
-    if html_text.strip() or images:
-        save_entry(conn, key, INFO_KEY, html_text, images)
-    else:
-        delete_entry(conn, INFO_KEY)

@@ -1,5 +1,4 @@
-# Build context is this server/ directory (self-contained - it doesn't
-# need anything from the desktop app). Works on ARM64 out of the box as
+# Build context is this server/ directory (self-contained). Works on ARM64 out of the box as
 # long as you build on-device (`docker compose build` on the Pi itself);
 # use `docker buildx build --platform linux/arm64` if cross-building.
 FROM python:3.12-slim
