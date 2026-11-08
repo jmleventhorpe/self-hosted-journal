@@ -242,17 +242,24 @@ def index():
         )
     with _conn_lock:
         initialized = db.is_initialized(_conn)
-    return render_template("login.html", initialized=initialized)
+    return render_template("login.html", initialized=initialized, min_password_length=MIN_PASSWORD_LENGTH)
 
 
 # ---------------------------------------------------------------- Auth
+
+# The password doesn't just guard the login - it's what the encryption key is
+# derived from, so anyone with a copy of journal.db (a backup, say) can guess
+# offline, where rate limiting doesn't apply. Only checked when creating a
+# journal; an existing journal's password is never re-checked against it.
+MIN_PASSWORD_LENGTH = 12
+
 
 @app.route("/api/setup", methods=["POST"])
 def setup_route():
     body = _json_body()
     password = body.get("password", "")
-    if len(password) < 4:
-        return jsonify({"error": "Password must be at least 4 characters"}), 400
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return jsonify({"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters"}), 400
 
     with _conn_lock:
         if db.is_initialized(_conn):

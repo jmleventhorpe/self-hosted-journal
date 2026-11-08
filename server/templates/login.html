@@ -18,6 +18,7 @@
       <input type="password" id="password" name="password" placeholder="Password" autocomplete="current-password" autofocus>
     {% else %}
       <p class="hint">This password encrypts your journal.<br>There is no recovery - if you lose it, your entries cannot be read again.</p>
+      <p class="hint">At least {{ min_password_length }} characters. A few random words strung together are long and easy to remember.</p>
       <input type="password" id="password" name="password" placeholder="Password" autocomplete="new-password" autofocus>
       <input type="password" id="password2" name="password2" placeholder="Confirm password" autocomplete="new-password">
     {% endif %}
@@ -27,6 +28,7 @@
 
   <script>
     const INITIALIZED = {{ "true" if initialized else "false" }};
+    const MIN_PASSWORD_LENGTH = {{ min_password_length }};
     const form = document.getElementById("auth-form");
     const errorEl = document.getElementById("error");
     const submitBtn = form.querySelector("button[type=submit]");
@@ -39,8 +41,10 @@
 
       if (!INITIALIZED) {
         const confirm = document.getElementById("password2").value;
-        if (password.length < 4) {
-          errorEl.textContent = "Password must be at least 4 characters.";
+        // Spread counts characters as Python's len() does, so an emoji
+        // isn't counted twice here and then rejected by the server.
+        if ([...password].length < MIN_PASSWORD_LENGTH) {
+          errorEl.textContent = `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
           return;
         }
         if (password !== confirm) {
