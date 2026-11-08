@@ -188,8 +188,14 @@ is only ever ciphertext without the password.
 ```
 server/app.py                         Flask server - the only thing that touches journal.db
 server/db.py, server/crypto.py        SQLite storage + encryption (server-side only)
-server/templates/, server/static/     web UI (calendar + Quill.js editor)
-server/Dockerfile, docker-compose.example.yml
+server/templates/                     the login page and the journal page
+server/static/js/                     the journal page's code, as ES modules (no build
+                                      step) - main.js lists what each module does
+server/static/login.js                the login / first-run page's code
+server/static/vendor/                 a pinned copy of Quill (see its SOURCE.md)
+server/tests/                         pytest suite
+server/Dockerfile, entrypoint.py,
+    docker-compose.example.yml        container setup
 ```
 
 ## Extending it later

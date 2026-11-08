@@ -60,7 +60,7 @@ def test_session_cookie_flags(new_client):
     ("/", "no-store"),
     (DAY, "no-store"),
     ("/api/dates", "no-store"),
-    ("/static/app.js", None),  # Flask's default: cacheable, revalidated
+    ("/static/js/main.js", None),  # Flask's default: cacheable, revalidated
 ])
 def test_journal_data_is_not_cached(entry, path, cache_control):
     header = entry.get(path).headers.get("Cache-Control")
@@ -75,7 +75,7 @@ def test_page_loads_no_third_party_code(entry):
     assert "https://" not in page
 
 
-@pytest.mark.parametrize("path", ["/", DAY, "/static/app.js"])
+@pytest.mark.parametrize("path", ["/", DAY, "/static/js/main.js"])
 def test_security_headers_on_every_response(entry, path):
     headers = entry.get(path).headers
     csp = headers["Content-Security-Policy"]
