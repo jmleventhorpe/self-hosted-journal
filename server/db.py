@@ -9,10 +9,13 @@ Images embedded in an entry are extracted and stored encrypted in
 itself is never stored, only a salt and a verifier token.
 """
 
+import json
 import re
 import secrets
 import sqlite3
 from crypto import (
+    KDF_PARAMS,
+    LEGACY_KDF_PARAMS,
     generate_salt,
     derive_key,
     make_verifier,
@@ -74,6 +77,25 @@ def is_initialized(conn: sqlite3.Connection) -> bool:
     return row is not None
 
 
+def _kdf_params(conn: sqlite3.Connection) -> dict:
+    """The key-derivation settings this journal's current key was made with."""
+    row = conn.execute("SELECT value FROM meta WHERE key = 'kdf'").fetchone()
+    return json.loads(bytes(row[0])) if row else LEGACY_KDF_PARAMS
+
+
+def _store_kdf_params(conn: sqlite3.Connection):
+    conn.execute(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES ('kdf', ?)",
+        (json.dumps(KDF_PARAMS).encode(),),
+    )
+
+
+def kdf_needs_upgrade(conn: sqlite3.Connection) -> bool:
+    """True if the key was derived with weaker settings than the current
+    ones - the next successful login re-keys the journal (see app.py)."""
+    return _kdf_params(conn) != KDF_PARAMS
+
+
 def setup_password(conn: sqlite3.Connection, password: str) -> bytes:
     """First-run only: create the salt + verifier for a new journal."""
     salt = generate_salt()
@@ -81,6 +103,7 @@ def setup_password(conn: sqlite3.Connection, password: str) -> bytes:
     verifier = make_verifier(key)
     conn.execute("INSERT INTO meta (key, value) VALUES ('salt', ?)", (salt,))
     conn.execute("INSERT INTO meta (key, value) VALUES ('verifier', ?)", (verifier,))
+    _store_kdf_params(conn)
     conn.commit()
     return key
 
@@ -89,7 +112,7 @@ def unlock(conn: sqlite3.Connection, password: str):
     """Returns the derived key if the password is correct, else None."""
     salt = conn.execute("SELECT value FROM meta WHERE key = 'salt'").fetchone()[0]
     verifier = conn.execute("SELECT value FROM meta WHERE key = 'verifier'").fetchone()[0]
-    key = derive_key(password, bytes(salt))
+    key = derive_key(password, bytes(salt), _kdf_params(conn))
     if check_verifier(key, bytes(verifier)):
         return key
     return None
@@ -97,9 +120,11 @@ def unlock(conn: sqlite3.Connection, password: str):
 
 def change_password(conn: sqlite3.Connection, old_key: bytes, new_password: str) -> bytes:
     """Re-encrypts every entry and image under a key derived from
-    `new_password` (with a fresh salt) and replaces the verifier. All in one
-    transaction: if anything fails partway, the rollback leaves the journal
-    exactly as it was, still on the old password. Returns the new key."""
+    `new_password` (with a fresh salt and the current key-derivation
+    settings) and replaces the verifier. All in one transaction: if anything
+    fails partway, the rollback leaves the journal exactly as it was, still
+    on the old password. Returns the new key. Also how a journal is moved to
+    stronger settings: "change" the password to the same one."""
     salt = generate_salt()
     new_key = derive_key(new_password, salt)
     try:
@@ -119,6 +144,7 @@ def change_password(conn: sqlite3.Connection, old_key: bytes, new_password: str)
             )
         conn.execute("UPDATE meta SET value = ? WHERE key = 'salt'", (salt,))
         conn.execute("UPDATE meta SET value = ? WHERE key = 'verifier'", (make_verifier(new_key),))
+        _store_kdf_params(conn)
         conn.commit()
     except BaseException:
         conn.rollback()

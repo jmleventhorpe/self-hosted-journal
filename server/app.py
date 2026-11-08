@@ -327,11 +327,26 @@ def login_route():
     with _conn_lock:
         if not db.is_initialized(_conn):
             return jsonify({"error": "Journal not set up yet"}), 400
+    # _login_lock is held until the session exists, so no other login or
+    # password change can re-key the journal in between and leave this
+    # session holding a key that no longer reads anything.
     with _login_lock:
         key, error = _check_password(password, 401)
-    if error:
-        return error
-    return _start_session(key)
+        if error:
+            return error
+
+        # A journal whose key was made with weaker settings than the current
+        # ones is re-keyed now, while we have the password: same password,
+        # new salt, stronger settings. Typically a one-off on the first login
+        # after an upgrade (when a restart has just ended every session
+        # anyway); any other sessions hold the old key, so they're ended like
+        # a password change.
+        with _conn_lock:
+            if db.kdf_needs_upgrade(_conn):
+                key = db.change_password(_conn, key, password)
+                with _sessions_lock:
+                    _sessions.clear()
+        return _start_session(key)
 
 
 @app.route("/api/change-password", methods=["POST"])
@@ -345,17 +360,19 @@ def change_password_route():
     if len(new_password) < MIN_PASSWORD_LENGTH:
         return jsonify({"error": f"New password must be at least {MIN_PASSWORD_LENGTH} characters"}), 400
 
+    # Held throughout, so a login can't derive the old key just before the
+    # re-encryption and then start a session with it just after.
     with _login_lock:
         # 403, not 401: the page treats 401 as "your session expired".
         old_key, error = _check_password(body.get("current_password", ""), 403)
-    if error:
-        return error
+        if error:
+            return error
 
-    with _conn_lock:
-        new_key = db.change_password(_conn, old_key, new_password)
-        with _sessions_lock:
-            _sessions.clear()
-    return _start_session(new_key)
+        with _conn_lock:
+            new_key = db.change_password(_conn, old_key, new_password)
+            with _sessions_lock:
+                _sessions.clear()
+        return _start_session(new_key)
 
 
 # ---------------------------------------------------------------- Login rate limiting

@@ -124,7 +124,13 @@ is only ever ciphertext without the password.
 
 - Password → scrypt (a slow, memory-hard KDF - resists brute force better
   than a fast hash) → a Fernet key (AES-128-CBC + HMAC-SHA256, from the
-  `cryptography` library). This happens entirely server-side now.
+  `cryptography` library). This happens entirely server-side.
+- scrypt runs at n=2^17, r=8, p=1: 128 MiB and roughly 0.3s on a desktop
+  (1-2s on a small ARM board) per attempt, which is what makes guessing
+  against a stolen copy of `journal.db` slow. The settings are stored in the
+  journal; a journal made with weaker ones (anything created before they
+  were recorded used n=2^14) is re-keyed automatically on its next login.
+  Raise `KDF_PARAMS` in `server/crypto.py` to strengthen it further later.
 - The password itself is never stored - only a random salt and a small
   "verifier" token used to check a password is correct on unlock.
 - The derived key lives only in the server process's memory, scoped to an

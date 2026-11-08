@@ -23,9 +23,21 @@ def generate_salt() -> bytes:
     return os.urandom(SALT_SIZE)
 
 
-def derive_key(password: str, salt: bytes) -> bytes:
+# scrypt cost settings. The password is what the key is derived from, so
+# these decide how fast someone holding a copy of journal.db can guess it
+# offline. n=2**17, r=8 means 128 MiB and roughly 0.3s (desktop) to 1-2s
+# (small ARM board) per guess - fine for a login that happens at most every
+# couple of hours. Each journal records the settings it was created with
+# (see db.py), so raising these later upgrades existing journals on their
+# next login.
+KDF_PARAMS = {"n": 2**17, "r": 8, "p": 1}
+# What journals created before settings were recorded used.
+LEGACY_KDF_PARAMS = {"n": 2**14, "r": 8, "p": 1}
+
+
+def derive_key(password: str, salt: bytes, params: dict = KDF_PARAMS) -> bytes:
     """Derive a Fernet-compatible key (32 url-safe base64 bytes) from a password."""
-    kdf = Scrypt(salt=salt, length=32, n=2**14, r=8, p=1)
+    kdf = Scrypt(salt=salt, length=32, n=params["n"], r=params["r"], p=params["p"])
     key_bytes = kdf.derive(password.encode("utf-8"))
     return base64.urlsafe_b64encode(key_bytes)
 
