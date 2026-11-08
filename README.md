@@ -98,6 +98,8 @@ durable - a password manager, or written down safely.
 - Toolbar: **Bold**, *Italic*, headings, font size, insert image, and
   **Resize Images** (Small/Standard/Large) for every image in the entry.
   Inserted images are scaled to a reasonable default automatically.
+  Before upload, anything over 2000px is shrunk and photos are re-saved as
+  JPEG, which also strips their metadata (including GPS location).
 - **Search entries** (under Template/Info) finds entries containing every
   word you type; click a result to open it, Escape to get the calendar back.
 - **Template** and **Info** (top of the calendar panel) each switch to a

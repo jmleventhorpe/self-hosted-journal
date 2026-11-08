@@ -249,6 +249,8 @@ def _guess_image_mime(raw: bytes) -> str:
         return "image/gif"
     if raw.startswith(b"BM"):
         return "image/bmp"
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        return "image/webp"
     return "application/octet-stream"
 
 
