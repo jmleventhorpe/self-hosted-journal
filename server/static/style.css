@@ -195,6 +195,77 @@ button, select, input {
   border-color: #007acc;
 }
 
+.search-input {
+  background: #3c3c3c;
+  color: #cccccc;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.search-input:focus {
+  outline: none;
+  border-color: #007acc;
+}
+
+.search-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.search-results[hidden],
+.calendar-grid[hidden] {
+  display: none;
+}
+
+.search-message {
+  margin: 4px 2px;
+  color: #8a8a8a;
+  font-size: 12px;
+}
+
+.search-result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  background: transparent;
+  color: #cccccc;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+.search-result:hover {
+  background: #2a2d2e;
+}
+.search-result.selected {
+  background: #094771;
+}
+.search-result:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: -2px;
+}
+.search-result-date {
+  font-weight: 600;
+  font-size: 12px;
+  color: #ffffff;
+}
+.search-result-snippet {
+  font-size: 12px;
+  color: #a0a0a0;
+  line-height: 1.4;
+}
+.search-result-snippet mark {
+  background: #613214;
+  color: #ffffff;
+  border-radius: 2px;
+}
+
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);

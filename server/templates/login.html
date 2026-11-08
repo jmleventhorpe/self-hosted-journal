@@ -8,15 +8,18 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body class="login-body">
-  <form id="auth-form" class="login-card" autocomplete="off">
+  <form id="auth-form" class="login-card">
     <h1>Journal</h1>
+    <!-- Password managers file a saved password under a username; there
+         isn't one here, so give them a fixed one to latch onto. -->
+    <input type="text" name="username" autocomplete="username" value="Journal" hidden>
     {% if initialized %}
       <p class="hint">Enter your journal password:</p>
-      <input type="password" id="password" placeholder="Password" autofocus>
+      <input type="password" id="password" name="password" placeholder="Password" autocomplete="current-password" autofocus>
     {% else %}
       <p class="hint">This password encrypts your journal.<br>There is no recovery - if you lose it, your entries cannot be read again.</p>
-      <input type="password" id="password" placeholder="Password" autofocus>
-      <input type="password" id="password2" placeholder="Confirm password">
+      <input type="password" id="password" name="password" placeholder="Password" autocomplete="new-password" autofocus>
+      <input type="password" id="password2" name="password2" placeholder="Confirm password" autocomplete="new-password">
     {% endif %}
     <p id="error" class="error"></p>
     <button type="submit">{{ "Unlock" if initialized else "Create Journal" }}</button>
@@ -26,6 +29,8 @@
     const INITIALIZED = {{ "true" if initialized else "false" }};
     const form = document.getElementById("auth-form");
     const errorEl = document.getElementById("error");
+    const submitBtn = form.querySelector("button[type=submit]");
+    const submitLabel = submitBtn.textContent;
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -44,18 +49,29 @@
         }
       }
 
+      // Deriving the key takes a noticeable moment - show that something
+      // is happening, and stop a second click sending it again.
+      submitBtn.disabled = true;
+      submitBtn.textContent = INITIALIZED ? "Unlocking…" : "Creating…";
       const endpoint = INITIALIZED ? "/login" : "/api/setup";
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        window.location.href = "/";
-      } else {
+      try {
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          window.location.href = "/"; // button stays disabled until the page changes
+          return;
+        }
         errorEl.textContent = data.error || "Something went wrong.";
+      } catch (err) {
+        errorEl.textContent = "Couldn't reach the server - check your connection.";
       }
+      submitBtn.disabled = false;
+      submitBtn.textContent = submitLabel;
+      document.getElementById("password").select();
     });
   </script>
 </body>

@@ -14,6 +14,7 @@ one slow request blocking others.
 """
 
 import base64
+import html as html_lib
 import os
 import re
 import secrets
@@ -193,6 +194,55 @@ def dates_route():
     with _conn_lock:
         dates = db.list_entry_dates(_conn)
     return jsonify({"dates": sorted(dates)})
+
+
+_TAG_RE = re.compile(r"<[^>]+>")
+_SPACE_RE = re.compile(r"\s+")
+SEARCH_MAX_RESULTS = 200
+SNIPPET_CONTEXT = 60  # characters either side of the first match
+
+
+def _html_to_text(html: str) -> str:
+    # Tags become spaces, not nothing, so "<p>end</p><p>start</p>" doesn't
+    # turn into "endstart".
+    return _SPACE_RE.sub(" ", html_lib.unescape(_TAG_RE.sub(" ", html))).strip()
+
+
+def _snippet(text: str, at: int, length: int) -> str:
+    start = max(0, at - SNIPPET_CONTEXT)
+    end = min(len(text), at + length + SNIPPET_CONTEXT)
+    return ("…" if start else "") + text[start:end] + ("…" if end < len(text) else "")
+
+
+# POST rather than GET ?q=... so search terms never land in access logs or
+# proxy logs - they're as private as the entries themselves.
+@app.route("/api/search", methods=["POST"])
+@require_auth
+def search_route():
+    """Case-insensitive search across all dated entries. Every word in the
+    query must appear somewhere in the entry (in any order). Decrypts the
+    whole journal per search, which is fine at one person's scale."""
+    key = _current_key()
+    body = request.get_json(force=True, silent=True) or {}
+    terms = [t for t in str(body.get("q", "")).lower().split() if t]
+    if not terms:
+        return jsonify({"results": [], "truncated": False})
+
+    with _conn_lock:
+        entries = db.list_entries(_conn, key)
+
+    results = []
+    truncated = False
+    for date, html in entries:
+        text = _html_to_text(html)
+        lowered = text.lower()
+        if all(term in lowered for term in terms):
+            if len(results) == SEARCH_MAX_RESULTS:
+                truncated = True
+                break
+            first = terms[0]
+            results.append({"date": date, "snippet": _snippet(text, lowered.index(first), len(first))})
+    return jsonify({"results": results, "truncated": truncated})
 
 
 @app.route("/entries/<date>", methods=["GET"])

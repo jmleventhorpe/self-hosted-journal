@@ -91,6 +91,16 @@ def list_entry_dates(conn: sqlite3.Connection) -> set:
     return {r[0] for r in rows}
 
 
+def list_entries(conn: sqlite3.Connection, key: bytes) -> list:
+    """Every dated entry as (date, html_text), newest first - text only,
+    images aren't decrypted. Used for search."""
+    rows = conn.execute(
+        "SELECT date, content FROM entries WHERE date NOT IN (?, ?) ORDER BY date DESC",
+        (TEMPLATE_KEY, INFO_KEY),
+    ).fetchall()
+    return [(date, decrypt_text(key, bytes(content))) for date, content in rows]
+
+
 def get_entry(conn: sqlite3.Connection, key: bytes, date: str):
     """Returns (html_text, {image_id: raw_bytes}) or (None, {}) if no entry exists."""
     row = conn.execute("SELECT content FROM entries WHERE date = ?", (date,)).fetchone()
