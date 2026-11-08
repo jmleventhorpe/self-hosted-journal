@@ -135,7 +135,12 @@ is only ever ciphertext without the password.
 - This is a deliberately low-effort security posture for a personal
   self-hosted tool, not a hardened multi-user service - see `server/app.py`'s
   module docstring for the specific tradeoffs (single worker, in-memory
-  sessions, no rate limiting on login).
+  sessions).
+- Wrong passwords are rate-limited per visitor address: 5 free tries, then
+  a wait that doubles from 30 seconds up to 15 minutes; a correct password
+  resets it. Behind a reverse proxy every visitor looks like the proxy, so
+  the limit then applies to everyone together - set `JOURNAL_PROXY_COUNT`
+  (see `server/docker-compose.example.yml`) to limit by real address instead.
 
 ## Repo layout
 
@@ -154,9 +159,6 @@ server/Dockerfile, docker-compose.example.yml
   deliberately.
 - **Password change**: re-encrypt the verifier and all existing
   entries/images under a new key derived from the new password.
-- **Rate limiting on /login**: currently unlimited attempts - fine for a
-  single-user LAN/Tailscale setup, worth adding before exposing more
-  broadly.
 - **Tags or multiple entries per day**: would mean moving from `date` as
   the primary key to a proper `id`, with date as a separate indexed column.
 - **Export**: dump decrypted entries to Markdown/JSON - straightforward

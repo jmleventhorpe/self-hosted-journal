@@ -20,6 +20,15 @@ services:
       # nginx/Cloudflare setup - see the comment in app.py for why it's
       # off by default.
       - JOURNAL_COOKIE_SECURE=1
+      # Login rate limiting counts wrong passwords per visitor address, but
+      # behind nginx every request comes from nginx - so by default everyone
+      # shares one limit, and someone guessing would lock you out too. Set
+      # this to the number of proxies that add to X-Forwarded-For in front
+      # of the app (1 if nginx sets `proxy_set_header X-Forwarded-For
+      # $proxy_add_x_forwarded_for;` and nothing else does; Cloudflare in
+      # front of nginx usually makes it 2). Too high lets visitors fake their
+      # address, so check your nginx config before setting it.
+      # - JOURNAL_PROXY_COUNT=1
     networks:
       - your_existing_network  # whatever network your nginx service is already on
     # No `ports:` published to the host on purpose - nginx reaches this

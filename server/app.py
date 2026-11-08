@@ -25,6 +25,7 @@ from functools import wraps
 from pathlib import Path
 
 from flask import Flask, Response, abort, jsonify, render_template, request, session
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
 
@@ -65,6 +66,16 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("JOURNAL_COOKIE_SECURE") ==
 # Not enough alone - "site" includes sibling subdomains (other self-hosted
 # services on the same domain) - hence the origin check in _reject_cross_origin.
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+# Behind a reverse proxy every request seems to come from the proxy, so the
+# login rate limit below would lump all visitors together (and someone
+# guessing passwords would lock you out too). Set JOURNAL_PROXY_COUNT to the
+# number of proxies that append to X-Forwarded-For in front of this server
+# to rate-limit by the real visitor address instead. Too high a number lets
+# a visitor fake their address, so leave it unset if unsure.
+_proxy_count = int(os.environ.get("JOURNAL_PROXY_COUNT", "0"))
+if _proxy_count:
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=_proxy_count)
 
 _conn = db.connect(str(DB_PATH))
 _conn_lock = threading.Lock()  # sqlite3 connections aren't safe to share across threads unguarded
@@ -255,16 +266,75 @@ def setup_route():
 def login_route():
     body = _json_body()
     password = body.get("password", "")
+    client = request.remote_addr or "unknown"
 
-    with _conn_lock:
-        if not db.is_initialized(_conn):
-            return jsonify({"error": "Journal not set up yet"}), 400
-        key = db.unlock(_conn, password)
+    with _login_lock:
+        # Checked before deriving the key, so a locked-out guesser doesn't
+        # even cost the server a password check.
+        wait = _login_wait(client)
+        if wait:
+            response = jsonify({"error": f"Too many wrong passwords - try again in {_describe_wait(wait)}."})
+            response.headers["Retry-After"] = str(int(wait + 0.999))
+            return response, 429
 
-    if key is None:
-        return jsonify({"error": "Incorrect password"}), 401
+        with _conn_lock:
+            if not db.is_initialized(_conn):
+                return jsonify({"error": "Journal not set up yet"}), 400
+            key = db.unlock(_conn, password)
+
+        if key is None:
+            lockout = _record_login_failure(client)
+            message = "Incorrect password."
+            if lockout:
+                message += f" Too many wrong passwords - wait {_describe_wait(lockout)} before trying again."
+            return jsonify({"error": message}), 401
+
+        _login_failures.pop(client, None)
 
     return _start_session(key)
+
+
+# ---------------------------------------------------------------- Login rate limiting
+# Per visitor address: a few free wrong guesses, then a wait that doubles
+# with each further one, up to a cap. A correct password, or a day without
+# failures, starts over. In memory only, like sessions.
+
+LOGIN_FREE_ATTEMPTS = 5
+LOGIN_FIRST_LOCKOUT = 30  # seconds, after the free attempts are used up
+LOGIN_MAX_LOCKOUT = 15 * 60
+LOGIN_FAILURE_MEMORY = 24 * 60 * 60  # forget a visitor's failures after this long
+
+_login_failures = {}  # address -> (failure count, last failure, locked until) on the monotonic clock
+# Held for the whole check-verify-record sequence, so parallel requests
+# can't all get past the check before any failure is recorded.
+_login_lock = threading.Lock()
+
+
+def _login_wait(client) -> float:
+    """Seconds this address must wait before trying again (0 if it can)."""
+    entry = _login_failures.get(client)
+    return max(0.0, entry[2] - time.monotonic()) if entry else 0.0
+
+
+def _record_login_failure(client) -> float:
+    """Counts a wrong password; returns the lockout it triggers (0 if none)."""
+    now = time.monotonic()
+    for other, (_, last, _) in list(_login_failures.items()):
+        if now - last > LOGIN_FAILURE_MEMORY:
+            del _login_failures[other]
+    count = _login_failures.get(client, (0, now, now))[0] + 1
+    excess = count - LOGIN_FREE_ATTEMPTS
+    lockout = 0.0 if excess < 0 else min(LOGIN_FIRST_LOCKOUT * 2 ** excess, LOGIN_MAX_LOCKOUT)
+    _login_failures[client] = (count, now, now + lockout)
+    return lockout
+
+
+def _describe_wait(seconds) -> str:
+    seconds = int(seconds + 0.999)
+    if seconds < 60:
+        return f"{seconds} second{'' if seconds == 1 else 's'}"
+    minutes = (seconds + 59) // 60
+    return f"{minutes} minute{'' if minutes == 1 else 's'}"
 
 
 @app.route("/logout", methods=["POST"])
