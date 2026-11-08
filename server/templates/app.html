@@ -6,7 +6,7 @@
   <title>Journal</title>
   <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2/dist/quill.snow.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/quill-2.0.3/quill.snow.css') }}">
 </head>
 <body>
   <div class="app view-editor" id="app-root" data-session-expires-in="{{ session_expires_in }}" data-min-password-length="{{ min_password_length }}">
@@ -103,7 +103,7 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/quill@2/dist/quill.js"></script>
+  <script src="{{ url_for('static', filename='vendor/quill-2.0.3/quill.js') }}"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

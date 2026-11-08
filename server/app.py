@@ -158,6 +158,17 @@ def _reject_cross_origin():
     return None
 
 
+@app.after_request
+def _no_store(response):
+    """Keep decrypted entries, images and search results out of the
+    browser's on-disk cache, where they'd outlive logging out. Only the app's
+    own static files (code and styles, nothing from the journal) may be
+    cached."""
+    if not request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 def _json_body() -> dict:
     """The request's JSON object. Only an application/json body counts -
     other sites can't send that cross-origin without CORS permission, which
@@ -547,4 +558,6 @@ def image_route(image_id):
 
 if __name__ == "__main__":
     # Dev convenience only - use gunicorn (see module docstring) in production.
-    app.run(host="0.0.0.0", port=8420, debug=True)
+    # Debug mode serves Werkzeug's interactive debugger, which can run any
+    # code, so it only listens on this machine - never the LAN.
+    app.run(host="127.0.0.1", port=8420, debug=True)

@@ -24,7 +24,8 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# dev (auto-reload, one process, fine for testing):
+# dev (auto-reload, debugger, http://127.0.0.1:8420 - this machine only,
+# since the debugger can run arbitrary code):
 python app.py
 
 # production:
@@ -131,6 +132,11 @@ is only ever ciphertext without the password.
   the browser, and is never written to disk.
 - A login is a hard 2 hours (`SESSION_LIFETIME` in `server/app.py`), not an
   idle timeout - after that the server forgets the key and the page locks.
+- The page loads no third-party code: the Quill editor is a pinned copy in
+  `server/static/vendor/` (see its `SOURCE.md` for where it came from and
+  how to upgrade), so a compromised CDN can't read entries or passwords.
+- Responses other than static files are sent `Cache-Control: no-store`, so
+  decrypted entries and images aren't left in the browser's disk cache.
 - Only the app's own pages can change anything (CSRF protection): the
   session cookie is `SameSite=Lax`, POSTs must be `application/json`, and
   requests the browser marks as coming from another origin - including
