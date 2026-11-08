@@ -222,14 +222,68 @@
     return html.replace(/src="\/images\/([a-f0-9]{32})"/g, 'src="$1"');
   }
 
+  // A 401 means the server forgot this session (e.g. it restarted - keys
+  // live only in its memory). Rather than navigating away and losing
+  // whatever is in the editor, ask for the password in place, then retry
+  // the request. Concurrent 401s share the one prompt.
   async function api(path, options) {
-    const res = await fetch(path, options);
-    if (res.status === 401) {
-      window.location.href = "/";
-      throw new Error("not authenticated");
+    for (;;) {
+      const res = await fetch(path, options);
+      if (res.status !== 401) return res;
+      await promptUnlock();
     }
-    return res;
   }
+
+  const unlockOverlay = document.getElementById("unlock-overlay");
+  const unlockForm = document.getElementById("unlock-form");
+  const unlockPassword = document.getElementById("unlock-password");
+  const unlockError = document.getElementById("unlock-error");
+  const unlockSubmit = unlockForm.querySelector("button[type=submit]");
+  let unlockPromise = null;
+  let resolveUnlock = null;
+
+  function promptUnlock() {
+    if (!unlockPromise) {
+      unlockPromise = new Promise((resolve) => { resolveUnlock = resolve; });
+      unlockError.textContent = "";
+      unlockPassword.value = "";
+      unlockOverlay.hidden = false;
+      unlockPassword.focus();
+      setStatus("Session expired - unlock to keep saving.", 0, true);
+    }
+    return unlockPromise;
+  }
+
+  unlockForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    unlockError.textContent = "";
+    unlockSubmit.disabled = true;
+    unlockSubmit.textContent = "Unlocking…";
+    try {
+      const res = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: unlockPassword.value }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        unlockError.textContent = data.error || "Something went wrong.";
+        return;
+      }
+      unlockOverlay.hidden = true;
+      unlockPassword.value = "";
+      setStatus("");
+      const resolve = resolveUnlock;
+      unlockPromise = null;
+      resolveUnlock = null;
+      resolve();
+    } catch (err) {
+      unlockError.textContent = "Couldn't reach the server - check your connection.";
+    } finally {
+      unlockSubmit.disabled = false;
+      unlockSubmit.textContent = "Unlock";
+    }
+  });
 
   function setStatus(text, timeout, isError = false) {
     statusEl.textContent = text;
@@ -262,6 +316,9 @@
       calendarGrid.appendChild(el);
     });
 
+    // Recomputed each render rather than fixed at page load, so a tab left
+    // open past midnight moves the highlight along.
+    const todayStr = formatDate(new Date());
     const firstOfMonth = new Date(viewYear, viewMonth, 1);
     const startOffset = firstOfMonth.getDay(); // 0=Sun
     const gridStart = new Date(viewYear, viewMonth, 1 - startOffset);
@@ -277,7 +334,7 @@
       if (cellDate.getMonth() !== viewMonth) cell.classList.add("other-month");
       if (dow === 6) cell.classList.add("weekend");
       if (USAGE_DAYS.has(dow)) cell.classList.add("usage-day");
-      if (dateStr === formatDate(today)) cell.classList.add("today");
+      if (dateStr === todayStr) cell.classList.add("today");
       if (!currentSpecialPage && dateStr === selectedDate) cell.classList.add("selected");
       cell.textContent = cellDate.getDate();
 
@@ -301,7 +358,16 @@
   }
 
   async function switchToDate(dateStr) {
-    if (!currentSpecialPage && dateStr === selectedDate) return;
+    // Bring the date's month into view too - matters for Today and for
+    // clicking a greyed-out day from the neighbouring month.
+    const [y, m] = dateStr.split("-").map(Number);
+    viewYear = y;
+    viewMonth = m - 1;
+    if (!currentSpecialPage && dateStr === selectedDate) {
+      renderCalendar();
+      showMobileView("editor");
+      return;
+    }
     await flushPendingSave();
     selectedDate = dateStr;
     currentSpecialPage = null;
@@ -415,6 +481,7 @@
     if (viewMonth < 0) { viewMonth = 11; viewYear -= 1; }
     renderCalendar();
   });
+  document.getElementById("today-btn").addEventListener("click", () => switchToDate(formatDate(new Date())));
   document.getElementById("next-month").addEventListener("click", () => {
     viewMonth += 1;
     if (viewMonth > 11) { viewMonth = 0; viewYear += 1; }

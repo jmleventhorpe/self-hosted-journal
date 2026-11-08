@@ -20,6 +20,7 @@
         <select id="month-select"></select>
         <select id="year-select"></select>
         <span class="spacer"></span>
+        <button id="today-btn" class="nav-btn today-btn" title="Go to today">Today</button>
         <button id="next-month" class="nav-btn" title="Next month">▶</button>
       </div>
       <div class="special-page-row">
@@ -38,6 +39,16 @@
       <div id="editor"></div>
       <div id="status" class="status-bar"></div>
     </div>
+  </div>
+
+  <div id="unlock-overlay" class="unlock-overlay" hidden>
+    <form id="unlock-form" class="login-card">
+      <h1>Session expired</h1>
+      <p class="hint">Unlock again to keep saving. Anything you haven't saved yet is still on this page.</p>
+      <input type="password" id="unlock-password" placeholder="Password" autocomplete="current-password">
+      <p id="unlock-error" class="error"></p>
+      <button type="submit">Unlock</button>
+    </form>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/quill@2/dist/quill.js"></script>

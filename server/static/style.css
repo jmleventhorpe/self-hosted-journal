@@ -81,6 +81,29 @@ button, select, input {
   font-size: 13px;
 }
 
+/* --- Re-unlock prompt shown over the app when the session expires --- */
+
+.unlock-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.6);
+}
+.unlock-overlay[hidden] {
+  display: none;
+}
+.unlock-overlay .login-card {
+  max-width: 100%;
+}
+.login-card button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* --- Main app --- */
 
 .app {
@@ -106,7 +129,7 @@ button, select, input {
 .calendar-nav {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   background: #2d2d2d;
   border: 1px solid #3c3c3c;
   border-radius: 8px;
@@ -128,6 +151,12 @@ button, select, input {
 .nav-btn.active {
   background: #007acc;
   color: #ffffff;
+}
+
+.today-btn {
+  font-size: 12px;
+  padding: 4px 6px;
+  border: 1px solid #3c3c3c;
 }
 
 .calendar-nav select {
@@ -202,13 +231,20 @@ button, select, input {
 .calendar-grid .day.usage-day {
   background: #333333;
 }
+/* Today: accent-coloured bold number with an inset ring (box-shadow, not
+   border, so the cell doesn't grow). Selected: solid fill. When they're
+   the same day the ring brightens so both still read. */
 .calendar-grid .day.today {
-  border: 2px solid #007acc;
+  color: #4fc1ff;
   font-weight: 700;
+  box-shadow: inset 0 0 0 2px #007acc;
 }
 .calendar-grid .day.selected {
   background: #094771;
   color: #ffffff;
+}
+.calendar-grid .day.selected.today {
+  box-shadow: inset 0 0 0 2px #4fc1ff;
 }
 .calendar-grid .day .dot {
   position: absolute;
