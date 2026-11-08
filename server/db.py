@@ -10,6 +10,7 @@ itself is never stored, only a salt and a verifier token.
 """
 
 import re
+import secrets
 import sqlite3
 from crypto import (
     generate_salt,
@@ -34,7 +35,8 @@ CREATE TABLE IF NOT EXISTS meta (
 CREATE TABLE IF NOT EXISTS entries (
     date TEXT PRIMARY KEY,      -- 'YYYY-MM-DD'
     content BLOB NOT NULL,      -- encrypted HTML
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    version TEXT                -- random token, new on every save; see save_entry
 );
 CREATE TABLE IF NOT EXISTS images (
     id TEXT PRIMARY KEY,        -- resource name referenced in the entry's HTML
@@ -52,8 +54,19 @@ def connect(path: str) -> sqlite3.Connection:
     # (see _conn_lock in app.py) - sqlite3 itself just can't know that.
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.executescript(SCHEMA)
+    _migrate(conn)
     conn.commit()
     return conn
+
+
+def _migrate(conn: sqlite3.Connection):
+    """Brings journals created by older versions up to the current schema."""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(entries)")}
+    if "version" not in columns:
+        conn.execute("ALTER TABLE entries ADD COLUMN version TEXT")
+    # Entries saved before versions existed get one now, so every stored
+    # entry can be checked for conflicting edits the same way.
+    conn.execute("UPDATE entries SET version = lower(hex(randomblob(16))) WHERE version IS NULL")
 
 
 def is_initialized(conn: sqlite3.Connection) -> bool:
@@ -100,12 +113,18 @@ def list_entries(conn: sqlite3.Connection, key: bytes) -> list:
 
 
 def get_entry(conn: sqlite3.Connection, key: bytes, date: str):
-    """Returns the entry's decrypted HTML, or None if no entry exists.
+    """Returns (decrypted HTML, version), or (None, None) if no entry exists.
     Images aren't included - they're fetched one by one via get_image."""
-    row = conn.execute("SELECT content FROM entries WHERE date = ?", (date,)).fetchone()
+    row = conn.execute("SELECT content, version FROM entries WHERE date = ?", (date,)).fetchone()
     if row is None:
-        return None
-    return decrypt_text(key, bytes(row[0]))
+        return None, None
+    return decrypt_text(key, bytes(row[0])), row[1]
+
+
+def get_version(conn: sqlite3.Connection, date: str):
+    """The entry's current version token, or None if no entry exists."""
+    row = conn.execute("SELECT version FROM entries WHERE date = ?", (date,)).fetchone()
+    return None if row is None else row[0]
 
 
 def save_entry(conn: sqlite3.Connection, key: bytes, date: str, html_text: str, images: dict):
@@ -116,16 +135,22 @@ def save_entry(conn: sqlite3.Connection, key: bytes, date: str, html_text: str, 
     them - the web client only ever sends new images, referring to
     already-stored ones by id alone - and removed otherwise (e.g. the
     user deleted an image).
+
+    Returns the entry's new version token. It's random rather than a
+    counter so a stale copy can never match by coincidence - e.g. after the
+    entry is deleted and written again from scratch elsewhere.
     """
     import datetime
 
     encrypted_content = encrypt_text(key, html_text)
     now = datetime.datetime.now().isoformat(timespec="seconds")
+    version = secrets.token_hex(16)
 
     conn.execute(
-        """INSERT INTO entries (date, content, updated_at) VALUES (?, ?, ?)
-           ON CONFLICT(date) DO UPDATE SET content=excluded.content, updated_at=excluded.updated_at""",
-        (date, encrypted_content, now),
+        """INSERT INTO entries (date, content, updated_at, version) VALUES (?, ?, ?, ?)
+           ON CONFLICT(date) DO UPDATE SET content=excluded.content,
+               updated_at=excluded.updated_at, version=excluded.version""",
+        (date, encrypted_content, now, version),
     )
 
     referenced_ids = set(IMG_SRC_RE.findall(html_text))
@@ -141,6 +166,7 @@ def save_entry(conn: sqlite3.Connection, key: bytes, date: str, html_text: str, 
             (img_id, date, encrypted_data),
         )
     conn.commit()
+    return version
 
 
 def delete_entry(conn: sqlite3.Connection, date: str):

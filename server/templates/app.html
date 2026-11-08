@@ -60,6 +60,29 @@
     </form>
   </div>
 
+  <div id="conflict-overlay" class="unlock-overlay" hidden>
+    <div class="login-card conflict-card" role="dialog" aria-modal="true" aria-labelledby="conflict-title" aria-describedby="conflict-text">
+      <h1 id="conflict-title">Changed somewhere else</h1>
+      <p id="conflict-text" class="hint"></p>
+      <div class="conflict-compare">
+        <section>
+          <h2>Yours (this tab)</h2>
+          <div id="conflict-mine" class="conflict-preview"></div>
+        </section>
+        <section>
+          <h2>The other version</h2>
+          <div id="conflict-theirs" class="conflict-preview"></div>
+        </section>
+      </div>
+      <div class="conflict-actions">
+        <button type="button" id="conflict-keep-both" title="The other version first, then yours - tidy up afterwards">Keep both</button>
+        <button type="button" id="conflict-keep-mine" class="secondary">Keep yours</button>
+        <button type="button" id="conflict-use-theirs" class="secondary">Keep the other version</button>
+      </div>
+      <p class="hint conflict-note">Keep both puts the other version first, then yours.</p>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/quill@2/dist/quill.js"></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

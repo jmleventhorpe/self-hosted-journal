@@ -237,22 +237,34 @@ def search_route():
 def _get_page(page_key):
     key = _current_key()
     with _conn_lock:
-        html = db.get_entry(_conn, key, page_key)
-    return jsonify({"html": html})
+        html, version = db.get_entry(_conn, key, page_key)
+    return jsonify({"html": html, "version": version})
 
 
 def _save_page(page_key):
     """Saves the posted HTML for a day or special page; a blank page is
-    deleted outright rather than stored, so it doesn't count as an entry."""
+    deleted outright rather than stored, so it doesn't count as an entry.
+
+    Conflict check: the client sends `base_version`, the version it last
+    loaded or saved (null if the page didn't exist). If the page has been
+    saved from somewhere else since (another tab or device), nothing is
+    written and the response is 409 with the other copy, so the client can
+    ask what to keep instead of silently overwriting it. A request with no
+    `base_version` at all (e.g. from a tab opened before this existed) skips
+    the check."""
     key = _current_key()
     body = request.get_json(force=True, silent=True) or {}
     html, images = _extract_inline_images(body.get("html") or "")
     with _conn_lock:
+        if "base_version" in body and body["base_version"] != db.get_version(_conn, page_key):
+            their_html, their_version = db.get_entry(_conn, key, page_key)
+            return jsonify({"error": "conflict", "html": their_html, "version": their_version}), 409
         if html.strip():
-            db.save_entry(_conn, key, page_key, html, images)
+            version = db.save_entry(_conn, key, page_key, html, images)
         else:
             db.delete_entry(_conn, page_key)
-    return jsonify({"ok": True})
+            version = None
+    return jsonify({"ok": True, "version": version})
 
 
 @app.route("/entries/<date>", methods=["GET"])

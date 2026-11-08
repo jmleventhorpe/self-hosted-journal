@@ -104,6 +104,69 @@ button, select, input {
   cursor: default;
 }
 
+/* --- Conflict dialog (reuses the overlay + card styles above) --- */
+
+.conflict-card {
+  width: 640px;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+.conflict-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.conflict-compare h2 {
+  margin: 0 0 6px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #a0a0a0;
+}
+.conflict-preview {
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 6px;
+  padding: 8px 10px;
+  max-height: 240px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.conflict-actions button {
+  flex: 1;
+}
+.login-card button.secondary {
+  background: #3c3c3c;
+}
+.login-card button.secondary:hover {
+  background: #4a4a4a;
+}
+.conflict-note {
+  margin: 0;
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  .conflict-compare {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Dimmed while a page loads - after a short delay, so quick loads don't flicker. */
+#editor .ql-editor {
+  transition: opacity 0s;
+}
+#editor.is-loading .ql-editor {
+  opacity: 0.4;
+  transition: opacity 0.15s 0.2s;
+}
+
 /* --- Main app --- */
 
 .app {

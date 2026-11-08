@@ -122,6 +122,7 @@
 
   const dateLabel = document.getElementById("date-label");
   const statusEl = document.getElementById("status");
+  const editorEl = document.getElementById("editor");
   const wordCountEl = document.getElementById("word-count");
   const prevDayBtn = document.getElementById("prev-day");
   const nextDayBtn = document.getElementById("next-day");
@@ -197,6 +198,14 @@
   // back to that page) rather than silently dropped.
   const unsaved = new Map();
   let saveChain = Promise.resolve(); // serializes saves so they can't land out of order
+  // path -> version token of the copy this page last loaded or saved (null
+  // if the page didn't exist). Sent with each save so the server can refuse
+  // it if the page has since been saved from another tab or device.
+  const versions = new Map();
+  // path -> {html, version} of the other copy, for saves the server refused
+  // as conflicting. Those pages aren't retried until you choose what to keep.
+  const conflicts = new Map();
+  let loadSeq = 0; // only the newest load may touch the editor
   let retryTimer = null;
   const RETRY_DELAY_MS = 5000;
 
@@ -484,36 +493,60 @@
     showMobileView("editor");
   }
 
+  // Puts HTML in the editor without it counting as an edit.
+  function showInEditor(html) {
+    loading = true;
+    // Not quill.root.innerHTML = ... - that bypasses Quill's own Delta
+    // model, leaving it out of sync with the DOM. Quill's internal
+    // MutationObserver then "reconciles" the external change, which is
+    // what was intermittently inserting extra empty paragraphs. This
+    // (single-string-argument) form of dangerouslyPasteHTML replaces the
+    // whole document through Quill's normal setContents path instead.
+    quill.clipboard.dangerouslyPasteHTML(toDisplayHtml(html), "silent");
+    loading = false;
+    updateWordCount(); // "silent" above means text-change didn't fire
+  }
+
   async function loadCurrent() {
     const path = currentPath();
+    const seq = ++loadSeq;
     loading = true;
+    // Locked while loading: anything typed now would be typed into the
+    // previous page's text and then thrown away when this one arrives.
+    quill.disable();
+    editorEl.classList.add("is-loading");
     try {
       const res = await api(path);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      // You've moved on to another page since this request went out - the
+      // newer load owns the editor now.
+      if (seq !== loadSeq) return;
       // A previous save of this page that hasn't gone through yet is newer
-      // than what the server has - show that instead.
-      const html = unsaved.has(path) ? unsaved.get(path) : data.html;
-      // Not quill.root.innerHTML = ... - that bypasses Quill's own Delta
-      // model, leaving it out of sync with the DOM. Quill's internal
-      // MutationObserver then "reconciles" the external change, which is
-      // what was intermittently inserting extra empty paragraphs. This
-      // (single-string-argument) form of dangerouslyPasteHTML replaces the
-      // whole document through Quill's normal setContents path instead.
-      quill.clipboard.dangerouslyPasteHTML(toDisplayHtml(html), "silent");
+      // than what the server has - show that instead, and keep the version
+      // it was based on so a conflicting change is still caught.
+      if (unsaved.has(path)) {
+        showInEditor(unsaved.get(path));
+      } else {
+        versions.set(path, data.version);
+        showInEditor(data.html);
+      }
       quill.enable();
-      updateWordCount(); // "silent" above means text-change didn't fire
     } catch (err) {
+      if (seq !== loadSeq) return;
       // Never leave the previous page's content editable under this page's
       // label - the next autosave would write it to the wrong date.
       quill.setText("", "silent");
-      quill.disable();
       updateWordCount();
       setStatus("Couldn't load this page - check your connection and try again.", 0, true);
     } finally {
-      loading = false;
+      if (seq === loadSeq) {
+        loading = false;
+        editorEl.classList.remove("is-loading");
+      }
     }
   }
+
 
   // Quill's "empty" document is still <p><br></p>, which would otherwise be
   // saved as a real (blank) entry and leave a dot on the calendar.
@@ -538,28 +571,48 @@
 
   // Sends everything in `unsaved`. Never rejects - failures stay in
   // `unsaved`, are reported in the status bar, and are retried.
+  function saveBody(path, html) {
+    const body = { html };
+    if (versions.has(path)) body.base_version = versions.get(path);
+    return JSON.stringify(body);
+  }
+
   function flushUnsaved() {
     saveChain = saveChain.then(async () => {
       if (!unsaved.size) return;
       if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
       setStatus("Saving…");
       for (const [path, html] of [...unsaved]) {
+        if (conflicts.has(path)) continue; // waiting on your choice
         try {
           const res = await api(path, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ html }),
+            body: saveBody(path, html),
           });
+          if (res.status === 409) {
+            const theirs = await res.json();
+            conflicts.set(path, { html: theirs.html, version: theirs.version });
+            continue;
+          }
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          versions.set(path, data.version);
           // Only clear it if nothing newer for this page was queued meanwhile.
           if (unsaved.get(path) === html) unsaved.delete(path);
         } catch (err) {
           // Left in `unsaved` for the retry below.
         }
       }
-      if (unsaved.size) {
+      if (conflicts.size) showNextConflict();
+      const failing = [...unsaved.keys()].some((path) => !conflicts.has(path));
+      if (failing) {
         setStatus("Not saved - retrying…", 0, true);
         retryTimer = setTimeout(() => { retryTimer = null; flushUnsaved(); }, RETRY_DELAY_MS);
+        return;
+      }
+      if (conflicts.size) {
+        setStatus("Not saved - changed somewhere else.", 0, true);
         return;
       }
       setStatus("Saved", 1500);
@@ -567,6 +620,107 @@
     });
     return saveChain;
   }
+
+  // --- Conflicts: a save was refused because the page was saved from
+  // another tab or device after this one loaded it. Show both and let
+  // you choose; nothing is overwritten until you do.
+  const conflictOverlay = document.getElementById("conflict-overlay");
+  const conflictText = document.getElementById("conflict-text");
+  const conflictMine = document.getElementById("conflict-mine");
+  const conflictTheirs = document.getElementById("conflict-theirs");
+  let conflictPath = null; // the conflict currently on screen
+
+  function pageLabel(path) {
+    const special = Object.values(SPECIAL_PAGES).find((p) => p.path === path);
+    return special ? special.label : formatDateLabel(path.replace("/entries/", ""));
+  }
+
+  // Plain-text preview of stored HTML. DOMParser builds an inert document
+  // (no scripts run, no images load), and only its text is shown.
+  function htmlToPreviewText(html) {
+    const body = new DOMParser().parseFromString(html || "", "text/html").body;
+    const blocks = [...body.children].map((el) => el.textContent.trim()).filter(Boolean);
+    return blocks.join("\n");
+  }
+
+  function showNextConflict() {
+    if (conflictPath !== null || !conflicts.size) return;
+    const [path, theirs] = conflicts.entries().next().value;
+    conflictPath = path;
+    conflictText.textContent = `${pageLabel(path)} was saved from another tab or device while you were editing it here. Choose what to keep - nothing is overwritten until you do.`;
+    conflictMine.textContent = htmlToPreviewText(unsaved.get(path)) || "(empty)";
+    conflictTheirs.textContent = theirs.html === null
+      ? "(cleared - the entry was deleted)"
+      : htmlToPreviewText(theirs.html) || "(no text - images only)";
+    conflictOverlay.hidden = false;
+    document.getElementById("conflict-keep-both").focus();
+  }
+
+  function resolveConflict(choice) {
+    if (conflictPath === null) return;
+    const path = conflictPath;
+    const theirs = conflicts.get(path);
+    const mine = unsaved.get(path) || "";
+    const isCurrent = path === currentPath();
+    if (isCurrent && autosaveTimer) {
+      clearTimeout(autosaveTimer);
+      autosaveTimer = null;
+    }
+    // Every choice builds on their copy now, so the next save is checked
+    // against that.
+    versions.set(path, theirs.version);
+    if (choice === "theirs") {
+      unsaved.delete(path);
+      if (isCurrent) showInEditor(theirs.html);
+    } else if (choice === "both") {
+      const merged = (theirs.html || "") + mine;
+      unsaved.set(path, merged);
+      if (isCurrent) showInEditor(merged);
+    }
+    // "mine": unsaved already holds it - just resend on top of their version.
+    conflicts.delete(path);
+    conflictPath = null;
+    conflictOverlay.hidden = true;
+    if (conflicts.size) {
+      showNextConflict();
+    } else {
+      flushUnsaved();
+      if (choice === "theirs") {
+        setStatus("Kept the other version", 2000);
+        refreshEntryDates().catch(() => {});
+      }
+    }
+  }
+
+  document.getElementById("conflict-keep-both").addEventListener("click", () => resolveConflict("both"));
+  document.getElementById("conflict-keep-mine").addEventListener("click", () => resolveConflict("mine"));
+  document.getElementById("conflict-use-theirs").addEventListener("click", () => resolveConflict("theirs"));
+
+  // Coming back to a tab that's been in the background (e.g. the phone you
+  // wrote on yesterday): if this page was changed elsewhere meanwhile and
+  // you have no unsaved edits here, quietly show the newer copy - better
+  // than a conflict the moment you start typing.
+  document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState !== "visible") return;
+    refreshEntryDates().catch(() => {});
+    const path = currentPath();
+    const seq = loadSeq;
+    const untouched = () => !loading && !autosaveTimer && !unsaved.has(path)
+      && !conflicts.has(path) && seq === loadSeq && path === currentPath();
+    if (!untouched()) return;
+    try {
+      const res = await api(path);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!untouched() || data.version === versions.get(path)) return;
+      versions.set(path, data.version);
+      showInEditor(data.html);
+      setStatus("Updated with changes made elsewhere", 3000);
+    } catch (err) {
+      // Not worth reporting - the next save still checks for conflicts.
+    }
+  });
+
 
   window.addEventListener("online", () => flushUnsaved());
 
@@ -759,7 +913,8 @@
     const alreadyFailing = unsaved.size > 0;
     if (autosaveTimer) unsaved.set(currentPath(), editorStorageHtml());
     unsaved.forEach((html, path) => {
-      const blob = new Blob([JSON.stringify({ html })], { type: "application/json" });
+      if (conflicts.has(path)) return; // would only be refused again
+      const blob = new Blob([saveBody(path, html)], { type: "application/json" });
       navigator.sendBeacon(path, blob);
     });
     // Saves were already failing, so the beacon probably will too - ask

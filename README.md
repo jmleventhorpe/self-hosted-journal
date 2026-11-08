@@ -83,6 +83,10 @@ durable - a password manager, or written down safely.
   text is kept and retried rather than lost.
 - If your session expires (e.g. the server restarted), an unlock prompt
   appears over the page - unlock and pending saves go through.
+- Open on more than one device or tab? If a page was saved somewhere else
+  since you opened it, your save is held back and you're shown both copies
+  to choose from: keep yours, keep the other, or keep both. A tab you come
+  back to with no unsaved edits quietly picks up the newer copy instead.
 - Toolbar: **Bold**, *Italic*, headings, font size, insert image, and
   **Resize Images** (Small/Standard/Large) for every image in the entry.
   Inserted images are scaled to a reasonable default automatically.
