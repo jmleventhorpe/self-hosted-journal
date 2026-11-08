@@ -95,6 +95,37 @@ def unlock(conn: sqlite3.Connection, password: str):
     return None
 
 
+def change_password(conn: sqlite3.Connection, old_key: bytes, new_password: str) -> bytes:
+    """Re-encrypts every entry and image under a key derived from
+    `new_password` (with a fresh salt) and replaces the verifier. All in one
+    transaction: if anything fails partway, the rollback leaves the journal
+    exactly as it was, still on the old password. Returns the new key."""
+    salt = generate_salt()
+    new_key = derive_key(new_password, salt)
+    try:
+        # One row at a time, so a journal full of photos isn't all held in
+        # memory at once.
+        for (date,) in conn.execute("SELECT date FROM entries").fetchall():
+            (content,) = conn.execute("SELECT content FROM entries WHERE date = ?", (date,)).fetchone()
+            conn.execute(
+                "UPDATE entries SET content = ? WHERE date = ?",
+                (encrypt_bytes(new_key, decrypt_bytes(old_key, bytes(content))), date),
+            )
+        for (img_id,) in conn.execute("SELECT id FROM images").fetchall():
+            (data,) = conn.execute("SELECT data FROM images WHERE id = ?", (img_id,)).fetchone()
+            conn.execute(
+                "UPDATE images SET data = ? WHERE id = ?",
+                (encrypt_bytes(new_key, decrypt_bytes(old_key, bytes(data))), img_id),
+            )
+        conn.execute("UPDATE meta SET value = ? WHERE key = 'salt'", (salt,))
+        conn.execute("UPDATE meta SET value = ? WHERE key = 'verifier'", (make_verifier(new_key),))
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    return new_key
+
+
 def list_entry_dates(conn: sqlite3.Connection) -> set:
     rows = conn.execute(
         "SELECT date FROM entries WHERE date NOT IN (?, ?)", (TEMPLATE_KEY, INFO_KEY)

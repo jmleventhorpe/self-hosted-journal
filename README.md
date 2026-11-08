@@ -101,6 +101,11 @@ durable - a password manager, or written down safely.
 - Dates with an entry are marked with a small dot on the calendar. Clearing
   an entry completely deletes it.
 - On a phone, the calendar and the entry are separate tabs.
+- **Change password** (bottom of the calendar panel) re-encrypts every
+  entry and image under the new password in one go - if anything fails
+  partway, nothing changes. Other devices are logged out and need the new
+  password; this one stays logged in. Wrong current-password attempts count
+  towards the login rate limit.
 
 ## Where your data lives
 
@@ -157,8 +162,6 @@ server/Dockerfile, docker-compose.example.yml
   is fine at one person's scale. A large journal would want an index - a
   tradeoff between speed and what stays encrypted, worth deciding
   deliberately.
-- **Password change**: re-encrypt the verifier and all existing
-  entries/images under a new key derived from the new password.
 - **Tags or multiple entries per day**: would mean moving from `date` as
   the primary key to a proper `id`, with date as a separate indexed column.
 - **Export**: dump decrypted entries to Markdown/JSON - straightforward

@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2/dist/quill.snow.css">
 </head>
 <body>
-  <div class="app view-editor" id="app-root" data-session-expires-in="{{ session_expires_in }}">
+  <div class="app view-editor" id="app-root" data-session-expires-in="{{ session_expires_in }}" data-min-password-length="{{ min_password_length }}">
     <div class="mobile-toolbar">
       <button id="mobile-tab-calendar" class="mobile-tab" title="Calendar">Calendar</button>
       <button id="mobile-tab-editor" class="mobile-tab active" title="Entry">Entry</button>
@@ -30,7 +30,10 @@
       <input type="search" id="search-input" class="search-input" placeholder="Search entries" aria-label="Search entries" autocomplete="off" spellcheck="false">
       <div id="search-results" class="search-results" aria-live="polite" hidden></div>
       <div id="calendar-grid" class="calendar-grid" role="group" aria-label="Calendar - arrow keys move between days"></div>
-      <button id="logout-btn" class="logout-btn">Log out</button>
+      <div class="account-row">
+        <button id="change-password-btn" class="logout-btn">Change password</button>
+        <button id="logout-btn" class="logout-btn">Log out</button>
+      </div>
     </div>
 
     <div class="editor-panel">
@@ -57,6 +60,23 @@
       <input type="password" id="unlock-password" placeholder="Password" autocomplete="current-password">
       <p id="unlock-error" class="error"></p>
       <button type="submit">Unlock</button>
+    </form>
+  </div>
+
+  <div id="password-overlay" class="unlock-overlay" hidden>
+    <form id="password-form" class="login-card" role="dialog" aria-modal="true" aria-labelledby="password-title">
+      <h1 id="password-title">Change password</h1>
+      <p class="hint">Everything is re-encrypted with the new password. There is no recovery - if you lose it, your entries cannot be read again. Other devices will be logged out and need the new password.</p>
+      <!-- Lets password managers file the new password under the same entry as the login page. -->
+      <input type="text" name="username" autocomplete="username" value="Journal" hidden>
+      <input type="password" id="current-password" placeholder="Current password" autocomplete="current-password" required>
+      <input type="password" id="new-password" placeholder="New password (at least {{ min_password_length }} characters)" autocomplete="new-password" required>
+      <input type="password" id="new-password2" placeholder="Confirm new password" autocomplete="new-password" required>
+      <p id="password-error" class="error"></p>
+      <div class="conflict-actions">
+        <button type="submit" id="password-submit">Change password</button>
+        <button type="button" id="password-cancel" class="secondary">Cancel</button>
+      </div>
     </form>
   </div>
 

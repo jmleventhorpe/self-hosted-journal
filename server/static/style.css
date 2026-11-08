@@ -410,8 +410,13 @@ button, select, input {
   background: #89d185;
 }
 
-.logout-btn {
+.account-row {
   margin-top: auto;
+  display: flex;
+  gap: 8px;
+}
+.logout-btn {
+  flex: 1;
   background: transparent;
   color: #a0a0a0;
   border: 1px solid #3c3c3c;

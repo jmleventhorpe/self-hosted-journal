@@ -169,6 +169,18 @@ def _json_body() -> dict:
     return body
 
 
+def _key_while_locked():
+    """This session's key, read while holding _conn_lock - call it only
+    inside `with _conn_lock:`. Reading the key before taking the lock would
+    let a request that waited out a password change (which holds the lock
+    while re-encrypting) carry on with the old key and write an entry
+    nothing can decrypt any more. A session that ended meanwhile gets 401."""
+    key = _current_key()
+    if key is None:
+        abort(401)
+    return key
+
+
 def require_auth(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
@@ -239,6 +251,7 @@ def index():
             "app.html",
             session_expires_in=int(remaining),
             session_lifetime_label=_SESSION_LIFETIME_LABEL,
+            min_password_length=MIN_PASSWORD_LENGTH,
         )
     with _conn_lock:
         initialized = db.is_initialized(_conn)
@@ -269,36 +282,69 @@ def setup_route():
     return _start_session(key)
 
 
+def _check_password(password, wrong_status):
+    """Rate-limited password check, shared by login and change password so
+    both count towards the same limit. Returns (key, None) if the password
+    is right, else (None, error response) - a wrong one answers with
+    `wrong_status`. Call with _login_lock held."""
+    client = request.remote_addr or "unknown"
+    # Checked before deriving the key, so a locked-out guesser doesn't even
+    # cost the server a password check.
+    wait = _login_wait(client)
+    if wait:
+        response = jsonify({"error": f"Too many wrong passwords - try again in {_describe_wait(wait)}."})
+        response.headers["Retry-After"] = str(int(wait + 0.999))
+        return None, (response, 429)
+
+    with _conn_lock:
+        key = db.unlock(_conn, password)
+
+    if key is None:
+        lockout = _record_login_failure(client)
+        message = "Incorrect password."
+        if lockout:
+            message += f" Too many wrong passwords - wait {_describe_wait(lockout)} before trying again."
+        return None, (jsonify({"error": message}), wrong_status)
+
+    _login_failures.pop(client, None)
+    return key, None
+
+
 @app.route("/login", methods=["POST"])
 def login_route():
+    password = _json_body().get("password", "")
+    with _conn_lock:
+        if not db.is_initialized(_conn):
+            return jsonify({"error": "Journal not set up yet"}), 400
+    with _login_lock:
+        key, error = _check_password(password, 401)
+    if error:
+        return error
+    return _start_session(key)
+
+
+@app.route("/api/change-password", methods=["POST"])
+@require_auth
+def change_password_route():
+    """Re-encrypts the whole journal under a key derived from the new
+    password. Every other session is ended - their keys can't read anything
+    now - and this browser gets a fresh one with the new key."""
     body = _json_body()
-    password = body.get("password", "")
-    client = request.remote_addr or "unknown"
+    new_password = body.get("new_password", "")
+    if len(new_password) < MIN_PASSWORD_LENGTH:
+        return jsonify({"error": f"New password must be at least {MIN_PASSWORD_LENGTH} characters"}), 400
 
     with _login_lock:
-        # Checked before deriving the key, so a locked-out guesser doesn't
-        # even cost the server a password check.
-        wait = _login_wait(client)
-        if wait:
-            response = jsonify({"error": f"Too many wrong passwords - try again in {_describe_wait(wait)}."})
-            response.headers["Retry-After"] = str(int(wait + 0.999))
-            return response, 429
+        # 403, not 401: the page treats 401 as "your session expired".
+        old_key, error = _check_password(body.get("current_password", ""), 403)
+    if error:
+        return error
 
-        with _conn_lock:
-            if not db.is_initialized(_conn):
-                return jsonify({"error": "Journal not set up yet"}), 400
-            key = db.unlock(_conn, password)
-
-        if key is None:
-            lockout = _record_login_failure(client)
-            message = "Incorrect password."
-            if lockout:
-                message += f" Too many wrong passwords - wait {_describe_wait(lockout)} before trying again."
-            return jsonify({"error": message}), 401
-
-        _login_failures.pop(client, None)
-
-    return _start_session(key)
+    with _conn_lock:
+        new_key = db.change_password(_conn, old_key, new_password)
+        with _sessions_lock:
+            _sessions.clear()
+    return _start_session(new_key)
 
 
 # ---------------------------------------------------------------- Login rate limiting
@@ -389,14 +435,13 @@ def search_route():
     """Case-insensitive search across all dated entries. Every word in the
     query must appear somewhere in the entry (in any order). Decrypts the
     whole journal per search, which is fine at one person's scale."""
-    key = _current_key()
     body = _json_body()
     terms = [t for t in str(body.get("q", "")).lower().split() if t]
     if not terms:
         return jsonify({"results": [], "truncated": False})
 
     with _conn_lock:
-        entries = db.list_entries(_conn, key)
+        entries = db.list_entries(_conn, _key_while_locked())
 
     results = []
     truncated = False
@@ -413,9 +458,8 @@ def search_route():
 
 
 def _get_page(page_key):
-    key = _current_key()
     with _conn_lock:
-        html, version = db.get_entry(_conn, key, page_key)
+        html, version = db.get_entry(_conn, _key_while_locked(), page_key)
     return jsonify({"html": html, "version": version})
 
 
@@ -430,10 +474,10 @@ def _save_page(page_key):
     ask what to keep instead of silently overwriting it. A request with no
     `base_version` at all (e.g. from a tab opened before this existed) skips
     the check."""
-    key = _current_key()
     body = _json_body()
     html, images = _extract_inline_images(body.get("html") or "")
     with _conn_lock:
+        key = _key_while_locked()
         if "base_version" in body and body["base_version"] != db.get_version(_conn, page_key):
             their_html, their_version = db.get_entry(_conn, key, page_key)
             return jsonify({"error": "conflict", "html": their_html, "version": their_version}), 409
@@ -494,9 +538,8 @@ def save_info_route():
 @app.route("/images/<image_id>")
 @require_auth
 def image_route(image_id):
-    key = _current_key()
     with _conn_lock:
-        raw = db.get_image(_conn, key, image_id)
+        raw = db.get_image(_conn, _key_while_locked(), image_id)
     if raw is None:
         abort(404)
     return Response(raw, mimetype=_guess_image_mime(raw))
