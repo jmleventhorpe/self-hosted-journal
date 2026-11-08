@@ -39,6 +39,17 @@ multi-process use. This is meant for one person's low-traffic personal
 journal, not concurrent multi-user load - `--threads 4` is enough to keep
 one slow request from blocking others.
 
+### Tests
+
+```bash
+cd server
+pip install -r requirements-dev.txt
+pytest
+```
+
+They run against throwaway journals in a temp directory - never your real
+one - and take about a second.
+
 ### Dependencies
 
 `server/requirements.txt` pins exact versions (including dependencies of

@@ -99,7 +99,7 @@ def kdf_needs_upgrade(conn: sqlite3.Connection) -> bool:
 def setup_password(conn: sqlite3.Connection, password: str) -> bytes:
     """First-run only: create the salt + verifier for a new journal."""
     salt = generate_salt()
-    key = derive_key(password, salt)
+    key = derive_key(password, salt, KDF_PARAMS)
     verifier = make_verifier(key)
     conn.execute("INSERT INTO meta (key, value) VALUES ('salt', ?)", (salt,))
     conn.execute("INSERT INTO meta (key, value) VALUES ('verifier', ?)", (verifier,))
@@ -126,7 +126,7 @@ def change_password(conn: sqlite3.Connection, old_key: bytes, new_password: str)
     on the old password. Returns the new key. Also how a journal is moved to
     stronger settings: "change" the password to the same one."""
     salt = generate_salt()
-    new_key = derive_key(new_password, salt)
+    new_key = derive_key(new_password, salt, KDF_PARAMS)
     try:
         # One row at a time, so a journal full of photos isn't all held in
         # memory at once.

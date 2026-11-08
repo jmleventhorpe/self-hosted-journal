@@ -1,0 +1,5 @@
+# Not needed in the image.
+tests/
+__pycache__/
+data/
+requirements-dev.txt

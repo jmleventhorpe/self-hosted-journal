@@ -35,7 +35,7 @@ KDF_PARAMS = {"n": 2**17, "r": 8, "p": 1}
 LEGACY_KDF_PARAMS = {"n": 2**14, "r": 8, "p": 1}
 
 
-def derive_key(password: str, salt: bytes, params: dict = KDF_PARAMS) -> bytes:
+def derive_key(password: str, salt: bytes, params: dict) -> bytes:
     """Derive a Fernet-compatible key (32 url-safe base64 bytes) from a password."""
     kdf = Scrypt(salt=salt, length=32, n=params["n"], r=params["r"], p=params["p"])
     key_bytes = kdf.derive(password.encode("utf-8"))
