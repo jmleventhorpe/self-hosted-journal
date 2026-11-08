@@ -1,3 +1,18 @@
-Flask
-gunicorn
-cryptography
+# Exact versions, including dependencies of dependencies, so every rebuild
+# installs what was tested - the compose example rebuilds from `main`, and
+# unpinned it would pick up whatever was released most recently.
+# Direct dependencies: Flask, gunicorn, cryptography. The rest come with them.
+#
+# To upgrade: in a fresh venv, `pip install Flask gunicorn cryptography`,
+# run the tests (see requirements-dev.txt), then `pip freeze` into this file.
+blinker==1.9.0
+cffi==2.1.1
+click==8.5.1
+cryptography==50.0.2
+Flask==3.1.3
+gunicorn==26.2.0
+itsdangerous==2.2.0
+Jinja2==3.1.6
+MarkupSafe==3.0.4
+pycparser==3.12
+Werkzeug==3.1.9

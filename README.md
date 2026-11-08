@@ -39,6 +39,12 @@ multi-process use. This is meant for one person's low-traffic personal
 journal, not concurrent multi-user load - `--threads 4` is enough to keep
 one slow request from blocking others.
 
+### Dependencies
+
+`server/requirements.txt` pins exact versions (including dependencies of
+dependencies), so a rebuild installs what was tested rather than whatever
+was released last. To upgrade, see the comment at the top of that file.
+
 Data (journal.db + the Flask session secret) is written to `JOURNAL_DATA_DIR`
 (defaults to `server/data/`). Point that at a mounted volume in Docker so it
 survives container rebuilds.
