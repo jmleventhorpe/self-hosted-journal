@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Journal</title>
   <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/quill-2.0.3/quill.snow.css') }}">
+  <!-- After Quill's, so the app's dark theme wins where both set a style. -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <div class="app view-editor" id="app-root" data-session-expires-in="{{ session_expires_in }}" data-min-password-length="{{ min_password_length }}">
@@ -16,12 +17,12 @@
     </div>
     <div class="calendar-panel">
       <div class="calendar-nav">
-        <button id="prev-month" class="nav-btn" title="Previous month" aria-label="Previous month">◀</button>
+        <button id="prev-month" class="nav-btn" title="Previous month" aria-label="Previous month">‹</button>
         <select id="month-select" aria-label="Month"></select>
         <select id="year-select" aria-label="Year"></select>
         <span class="spacer"></span>
         <button id="today-btn" class="nav-btn today-btn" title="Go to today">Today</button>
-        <button id="next-month" class="nav-btn" title="Next month" aria-label="Next month">▶</button>
+        <button id="next-month" class="nav-btn" title="Next month" aria-label="Next month">›</button>
       </div>
       <div class="special-page-row">
         <button id="template-btn" class="template-toggle-btn" title="Edit the reusable template">Template</button>

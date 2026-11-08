@@ -1,4 +1,33 @@
-/* Dark palette inspired by VS Code's Dark+ theme. */
+/* Dark palette inspired by VS Code's Dark+ theme.
+   Loaded after Quill's stylesheet (see templates/app.html), so where both
+   set the same thing, these rules win. */
+
+:root {
+  --bg: #1e1e1e;
+  --panel: #252526;
+  --surface: #2d2d2d;
+  --surface-hover: #37373d;
+  --border: #3c3c3c;
+  --text: #cccccc;
+  --text-strong: #f0f0f0;
+  --muted: #9a9a9a;
+  --faint: #6a6a6a;
+  --accent: #0e639c;        /* filled buttons */
+  --accent-hover: #1177bb;
+  --accent-ring: #007acc;   /* focus borders, today's ring */
+  --accent-text: #4fc1ff;   /* links, active toolbar items */
+  --selected: #094771;
+  --entry: #89d185;         /* days with an entry */
+  --entry-bg: rgba(137, 209, 133, 0.16);
+  --danger: #f48771;
+
+  /* Corners: kept small and consistent. */
+  --radius-sm: 3px;         /* day cells, small controls */
+  --radius: 4px;            /* buttons, inputs */
+  --radius-lg: 6px;         /* cards, dialogs */
+
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
 
 * {
   box-sizing: border-box;
@@ -6,14 +35,22 @@
 
 body {
   margin: 0;
-  background: #1e1e1e;
-  color: #cccccc;
-  font-family: Verdana, "DejaVu Sans", "Liberation Sans", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
   font-size: 14px;
+  -webkit-font-smoothing: antialiased;
 }
 
 button, select, input {
   font-family: inherit;
+}
+
+/* A visible keyboard focus ring on every control (mouse clicks don't show it). */
+button:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
 }
 
 /* --- Login page --- */
@@ -27,11 +64,12 @@ button, select, input {
 }
 
 .login-card {
-  background: #252526;
-  border: 1px solid #3c3c3c;
-  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   padding: 32px;
-  width: 340px;
+  width: 360px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -40,43 +78,46 @@ button, select, input {
 .login-card h1 {
   margin: 0 0 4px 0;
   font-size: 20px;
-  color: #ffffff;
+  font-weight: 600;
+  color: var(--text-strong);
 }
 
 .login-card .hint {
   margin: 0 0 8px 0;
-  color: #a0a0a0;
+  color: var(--muted);
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 .login-card input {
-  background: #3c3c3c;
-  color: #cccccc;
-  border: 1px solid #3c3c3c;
-  border-radius: 6px;
-  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 9px 10px;
+  font-size: 14px;
 }
 .login-card input:focus {
   outline: none;
-  border-color: #007acc;
+  border-color: var(--accent-ring);
 }
 
 .login-card button {
-  background: #0e639c;
+  background: var(--accent);
   color: #ffffff;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 10px 16px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
 }
 .login-card button:hover {
-  background: #1177bb;
+  background: var(--accent-hover);
 }
 
 .error {
-  color: #f48771;
+  color: var(--danger);
   min-height: 1em;
   margin: 0;
   font-size: 13px;
@@ -97,7 +138,7 @@ button, select, input {
 /* Opaque, unlike the conflict dialog: once the login has run out, the
    entry shouldn't stay readable behind the prompt. */
 #unlock-overlay {
-  background: #1e1e1e;
+  background: var(--bg);
   z-index: 110; /* above the conflict dialog if both are up */
 }
 .unlock-overlay[hidden] {
@@ -127,19 +168,19 @@ button, select, input {
   margin: 0 0 6px 0;
   font-size: 12px;
   font-weight: 600;
-  color: #a0a0a0;
+  color: var(--muted);
 }
 .conflict-preview {
-  background: #1e1e1e;
-  border: 1px solid #3c3c3c;
-  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 8px 10px;
   max-height: 240px;
   overflow-y: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 .conflict-actions {
   display: flex;
@@ -148,12 +189,16 @@ button, select, input {
 }
 .conflict-actions button {
   flex: 1;
+  padding-left: 12px;
+  padding-right: 12px;
+  white-space: nowrap;
 }
 .login-card button.secondary {
-  background: #3c3c3c;
+  background: var(--surface);
+  border: 1px solid var(--border);
 }
 .login-card button.secondary:hover {
-  background: #4a4a4a;
+  background: var(--surface-hover);
 }
 .conflict-note {
   margin: 0;
@@ -192,53 +237,68 @@ button, select, input {
 .calendar-panel {
   width: 320px;
   flex-shrink: 0;
-  background: #252526;
-  border-right: 1px solid #3c3c3c;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  padding: 8px;
-  gap: 8px;
+  padding: 12px;
+  gap: 10px;
 }
 
 .calendar-nav {
   display: flex;
   align-items: center;
   gap: 2px;
-  background: #2d2d2d;
-  border: 1px solid #3c3c3c;
-  border-radius: 8px;
-  padding: 6px;
 }
 
 .nav-btn {
   background: transparent;
-  color: #cccccc;
+  color: var(--text);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius);
   padding: 4px 8px;
-  font-weight: 600;
+  font-size: 16px;
+  line-height: 1;
   cursor: pointer;
 }
 .nav-btn:hover {
-  background: #37373d;
+  background: var(--surface-hover);
 }
 .nav-btn.active {
-  background: #007acc;
+  background: var(--accent-ring);
   color: #ffffff;
+}
+
+#prev-month,
+#next-month {
+  font-size: 20px;
+  padding: 2px 8px;
+  color: var(--muted);
+}
+#prev-month:hover,
+#next-month:hover {
+  color: var(--text-strong);
 }
 
 .today-btn {
   font-size: 12px;
-  padding: 4px 6px;
-  border: 1px solid #3c3c3c;
+  font-weight: 500;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
 }
 
 .calendar-nav select {
   background: transparent;
-  color: #cccccc;
+  color: var(--text-strong);
   border: none;
+  border-radius: var(--radius);
+  font-size: 15px;
   font-weight: 600;
-  padding: 4px;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+.calendar-nav select:hover {
+  background: var(--surface-hover);
 }
 
 .spacer {
@@ -252,34 +312,35 @@ button, select, input {
 
 .template-toggle-btn {
   flex: 1;
-  background: #2d2d2d;
-  color: #cccccc;
-  border: 1px solid #3c3c3c;
-  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 6px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
 }
 .template-toggle-btn:hover {
-  background: #37373d;
+  background: var(--surface-hover);
 }
 .template-toggle-btn.active {
-  background: #007acc;
+  background: var(--accent-ring);
   color: #ffffff;
-  border-color: #007acc;
+  border-color: var(--accent-ring);
 }
 
 .search-input {
-  background: #3c3c3c;
-  color: #cccccc;
-  border: 1px solid #3c3c3c;
-  border-radius: 6px;
-  padding: 6px 10px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px 10px;
   font-size: 13px;
 }
 .search-input:focus {
   outline: none;
-  border-color: #007acc;
+  border-color: var(--accent-ring);
 }
 
 .search-results {
@@ -297,7 +358,7 @@ button, select, input {
 
 .search-message {
   margin: 4px 2px;
-  color: #8a8a8a;
+  color: var(--muted);
   font-size: 12px;
 }
 
@@ -307,32 +368,32 @@ button, select, input {
   gap: 2px;
   text-align: left;
   background: transparent;
-  color: #cccccc;
+  color: var(--text);
   border: none;
-  border-radius: 4px;
-  padding: 6px 8px;
+  border-radius: var(--radius);
+  padding: 7px 8px;
   font: inherit;
   cursor: pointer;
 }
 .search-result:hover {
-  background: #2a2d2e;
+  background: var(--surface-hover);
 }
 .search-result.selected {
-  background: #094771;
+  background: var(--selected);
 }
 .search-result:focus-visible {
-  outline: 2px solid #ffffff;
+  outline: 2px solid var(--accent-text);
   outline-offset: -2px;
 }
 .search-result-date {
   font-weight: 600;
   font-size: 12px;
-  color: #ffffff;
+  color: var(--text-strong);
 }
 .search-result-snippet {
   font-size: 12px;
-  color: #a0a0a0;
-  line-height: 1.4;
+  color: var(--muted);
+  line-height: 1.45;
 }
 .search-result-snippet mark {
   background: #613214;
@@ -340,32 +401,35 @@ button, select, input {
   border-radius: 2px;
 }
 
+/* --- Calendar grid --- */
+
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
+  gap: 3px;
 }
 
 .calendar-grid .weekday {
   text-align: center;
   font-size: 11px;
-  color: #8a8a8a;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--faint);
   padding: 4px 0;
-}
-.calendar-grid .weekday.weekend {
-  color: #999999;
 }
 
 .calendar-grid .day {
   position: relative;
   text-align: center;
-  padding: 8px 0;
+  padding: 9px 0;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: transparent;
   font: inherit;
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
-  color: #cccccc;
+  color: var(--text);
 }
 .calendar-grid .day:focus-visible {
   outline: 2px solid #ffffff;
@@ -373,41 +437,60 @@ button, select, input {
   z-index: 1;
 }
 .calendar-grid .day:hover {
-  background: #2a2d2e;
+  background: var(--surface-hover);
 }
 .calendar-grid .day.other-month {
-  color: #656565;
+  color: #5a5a5a;
 }
 .calendar-grid .day.weekend {
-  color: #999999;
+  color: var(--muted);
 }
+/* The days you usually write on - deliberately quiet, so days that
+   actually have an entry stand out above them. */
 .calendar-grid .day.usage-day {
-  background: #333333;
+  background: #2c2c2d;
+}
+/* Days with an entry: a green tint across the cell, a brighter number and
+   a bar along the bottom - visible at a glance, not just a dot. */
+.calendar-grid .day.has-entry {
+  background: var(--entry-bg);
+  color: #e3f3e1;
+  font-weight: 600;
+}
+.calendar-grid .day.has-entry:hover {
+  background: rgba(137, 209, 133, 0.26);
+}
+.calendar-grid .day.has-entry.other-month {
+  background: rgba(137, 209, 133, 0.07);
+  color: #6f8a6d;
+}
+.calendar-grid .day .entry-mark {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--entry);
+}
+.calendar-grid .day.other-month .entry-mark {
+  opacity: 0.45;
 }
 /* Today: accent-coloured bold number with an inset ring (box-shadow, not
    border, so the cell doesn't grow). Selected: solid fill. When they're
    the same day the ring brightens so both still read. */
 .calendar-grid .day.today {
-  color: #4fc1ff;
+  color: var(--accent-text);
   font-weight: 700;
-  box-shadow: inset 0 0 0 2px #007acc;
+  box-shadow: inset 0 0 0 2px var(--accent-ring);
 }
 .calendar-grid .day.selected {
-  background: #094771;
+  background: var(--selected);
   color: #ffffff;
 }
 .calendar-grid .day.selected.today {
-  box-shadow: inset 0 0 0 2px #4fc1ff;
-}
-.calendar-grid .day .dot {
-  position: absolute;
-  bottom: 3px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #89d185;
+  box-shadow: inset 0 0 0 2px var(--accent-text);
 }
 
 .account-row {
@@ -418,15 +501,19 @@ button, select, input {
 .logout-btn {
   flex: 1;
   background: transparent;
-  color: #a0a0a0;
-  border: 1px solid #3c3c3c;
-  border-radius: 6px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 6px;
+  font-size: 13px;
   cursor: pointer;
 }
 .logout-btn:hover {
-  background: #2a2d2e;
+  background: var(--surface-hover);
+  color: var(--text);
 }
+
+/* --- Editor panel --- */
 
 .editor-panel {
   flex: 1;
@@ -439,7 +526,8 @@ button, select, input {
   display: flex;
   align-items: center;
   padding: 10px 16px;
-  border-bottom: 1px solid #3c3c3c;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
 }
 
 .date-title {
@@ -452,29 +540,33 @@ button, select, input {
 }
 .date-title .nav-btn {
   font-size: 20px;
-  line-height: 1;
   padding: 2px 10px;
+  color: var(--muted);
+}
+.date-title .nav-btn:hover {
+  color: var(--text-strong);
 }
 
 .date-row h1 {
   text-align: center;
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-strong);
   margin: 0;
 }
 
 .accent-btn {
-  background: #0e639c;
+  background: var(--accent);
   color: #ffffff;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   padding: 6px 12px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
 }
 .accent-btn:hover {
-  background: #1177bb;
+  background: var(--accent-hover);
 }
 
 #editor {
@@ -485,9 +577,9 @@ button, select, input {
 
 .status-bar {
   padding: 4px 16px;
-  border-top: 1px solid #3c3c3c;
-  background: #252526;
-  color: #a0a0a0;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
   font-size: 12px;
   min-height: 1.4em;
   display: flex;
@@ -497,37 +589,62 @@ button, select, input {
 .word-count {
   margin-left: auto;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .status-bar .status-error {
-  color: #f48771;
+  color: var(--danger);
 }
 
 /* --- Quill overrides to match the dark theme --- */
 
 .ql-toolbar.ql-snow {
-  background: #2d2d2d;
+  background: var(--panel);
   border: none;
-  border-bottom: 1px solid #3c3c3c;
+  border-bottom: 1px solid var(--border);
+  /* On wide screens the buttons start where the centred writing area's
+     text does (see .ql-editor), rather than at the far left. */
+  padding: 6px max(12px, calc((100% - 760px) / 2 + 26px));
+  font-family: var(--font-ui);
 }
 .ql-toolbar.ql-snow .ql-stroke {
-  stroke: #cccccc;
+  stroke: var(--text);
 }
 .ql-toolbar.ql-snow .ql-fill {
-  fill: #cccccc;
+  fill: var(--text);
 }
 .ql-toolbar.ql-snow .ql-picker {
-  color: #cccccc;
+  color: var(--text);
+}
+/* Hovered and active toolbar items: Quill's default dark blue is hard to
+   see here, so they use the light accent instead. */
+.ql-snow.ql-toolbar button:hover .ql-stroke,
+.ql-snow.ql-toolbar button.ql-active .ql-stroke,
+.ql-snow.ql-toolbar .ql-picker-label:hover .ql-stroke,
+.ql-snow.ql-toolbar .ql-picker-label.ql-active .ql-stroke {
+  stroke: var(--accent-text);
+}
+.ql-snow.ql-toolbar button:hover .ql-fill,
+.ql-snow.ql-toolbar button.ql-active .ql-fill {
+  fill: var(--accent-text);
+}
+.ql-snow.ql-toolbar .ql-picker-label:hover,
+.ql-snow.ql-toolbar .ql-picker-label.ql-active,
+.ql-snow.ql-toolbar .ql-picker-item:hover,
+.ql-snow.ql-toolbar .ql-picker-item.ql-selected {
+  color: var(--accent-text);
 }
 .ql-snow .ql-picker-options {
-  background: #252526;
-  border: 1px solid #3c3c3c !important;
+  background: var(--panel);
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .resize-images-select {
-  background: #2d2d2d;
-  color: #cccccc;
-  border: 1px solid #3c3c3c;
-  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 3px 4px;
   font-size: 13px;
   margin-left: 6px;
@@ -548,45 +665,82 @@ button, select, input {
 }
 .ql-container.ql-snow {
   border: none;
-  font-size: 14px;
+  font-family: var(--font-ui);
+  font-size: 16px;
 }
+/* The writing area: a comfortable line length and spacing, centred,
+   rather than text running the full width of a wide screen. */
 .ql-editor {
+  position: relative; /* so the placeholder lines up with it */
   color: #d4d4d4;
-  padding: 16px;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 28px 32px 64px;
+  line-height: 1.65;
+  /* Quill makes the writing area its own scroll box; scroll the whole
+     panel instead, so the scrollbar sits at the window edge rather than
+     beside the centred text. */
+  height: auto;
+  min-height: 100%;
+  overflow-y: visible;
+}
+.ql-editor h1,
+.ql-editor h2,
+.ql-editor h3 {
+  color: var(--text-strong);
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0.8em 0 0.3em;
+}
+.ql-editor h1:first-child,
+.ql-editor h2:first-child,
+.ql-editor h3:first-child {
+  margin-top: 0;
+}
+/* Quill indents lists twice (the list and each item); once is enough. */
+.ql-editor ol {
+  padding-left: 0.25em;
+}
+.ql-editor img {
+  border-radius: var(--radius);
 }
 /* Links: Quill's default dark blue is hard to read on this background. */
 .ql-snow .ql-editor a {
-  color: #4fc1ff;
+  color: var(--accent-text);
 }
 
 /* The bubble that appears when adding or clicking a link - white by
-   default in Quill's theme. Prefixed with #editor to outrank Quill's own
-   rules, since its stylesheet loads after this one. */
+   default in Quill's theme. */
 #editor .ql-tooltip {
-  background: #252526;
-  border: 1px solid #3c3c3c;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-  color: #cccccc;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  color: var(--text);
   z-index: 10;
 }
 #editor .ql-tooltip input[type=text] {
-  background: #3c3c3c;
-  color: #cccccc;
-  border: 1px solid #3c3c3c;
-  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
 #editor .ql-tooltip input[type=text]:focus {
   outline: none;
-  border-color: #007acc;
+  border-color: var(--accent-ring);
 }
 #editor .ql-tooltip a.ql-preview,
 #editor .ql-tooltip a.ql-action,
 #editor .ql-tooltip a.ql-remove {
-  color: #4fc1ff;
+  color: var(--accent-text);
 }
 
 .ql-editor.ql-blank::before {
-  color: #6a6a6a;
+  color: var(--faint);
+  font-style: normal;
+  /* Line the placeholder up with the writing area's padding. */
+  left: 32px;
+  right: 32px;
 }
 
 /* --- Mobile: one panel at a time instead of squeezing both side by side --- */
@@ -601,8 +755,8 @@ button, select, input {
   .mobile-toolbar {
     display: flex;
     flex-shrink: 0;
-    background: #252526;
-    border-bottom: 1px solid #3c3c3c;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
   }
 
   .mobile-tab {
@@ -610,15 +764,15 @@ button, select, input {
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
-    color: #a0a0a0;
+    color: var(--muted);
     padding: 12px;
-    font-weight: 600;
+    font-weight: 500;
     font-size: 14px;
     cursor: pointer;
   }
   .mobile-tab.active {
-    color: #ffffff;
-    border-bottom-color: #007acc;
+    color: var(--text-strong);
+    border-bottom-color: var(--accent-ring);
   }
 
   .calendar-panel,
@@ -636,6 +790,14 @@ button, select, input {
   }
   .date-title .nav-btn {
     padding: 2px 6px;
+  }
+
+  .ql-editor {
+    padding: 20px 16px 48px;
+  }
+  .ql-editor.ql-blank::before {
+    left: 16px;
+    right: 16px;
   }
 
   .app.view-calendar .editor-panel {

@@ -106,6 +106,7 @@ export function renderCalendar() {
       cell.setAttribute("aria-current", "date");
     }
     if (isSelected) cell.classList.add("selected");
+    if (hasEntry) cell.classList.add("has-entry");
     cell.textContent = cellDate.getDate();
     cell.setAttribute("aria-label", [
       formatDateLabel(dateStr),
@@ -115,9 +116,9 @@ export function renderCalendar() {
     ].filter(Boolean).join(", "));
 
     if (hasEntry) {
-      const dot = document.createElement("span");
-      dot.className = "dot";
-      cell.appendChild(dot);
+      const mark = document.createElement("span");
+      mark.className = "entry-mark";
+      cell.appendChild(mark);
     }
 
     cell.addEventListener("click", () => {

@@ -75,9 +75,12 @@ specialPageButtons.info.addEventListener("click", () => showSpecialPage("info"))
 export function updateHeader() {
   const special = state.currentSpecialPage && SPECIAL_PAGES[state.currentSpecialPage];
   dateLabel.textContent = special ? special.label : formatDateLabel(state.selectedDate);
-  importTemplateBtn.style.display = special ? "none" : "";
-  prevDayBtn.hidden = !!special;
-  nextDayBtn.hidden = !!special;
+  // Hidden but still taking up their space, so the bar keeps the same
+  // height and the title stays put when switching to Template or Info.
+  // (visibility: hidden also takes them out of the tab order.)
+  for (const el of [importTemplateBtn, prevDayBtn, nextDayBtn]) {
+    el.style.visibility = special ? "hidden" : "";
+  }
   quill.root.setAttribute("data-placeholder", special ? special.placeholder : ENTRY_PLACEHOLDER);
 }
 
