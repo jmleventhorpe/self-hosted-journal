@@ -588,6 +588,40 @@
 
   // Sends everything in `unsaved`. Never rejects - failures stay in
   // `unsaved`, are reported in the status bar, and are retried.
+  // The server may store an image under a different id than the editor
+  // has: a newly inserted one arrives as an inline data: URI, and one from
+  // the template is copied to this page. Point the editor (and any newer
+  // save of this page still waiting to go) at the stored ids, so later
+  // saves send small references instead of re-uploading or re-copying.
+  const IMG_SRC_RE = /<img\b[^>]*?\bsrc="([^"]*)"/g;
+  const storageSrc = (src) => src.replace(/^\/images\/([a-f0-9]{32})$/, "$1");
+
+  function adoptStoredImageIds(path, sentHtml, storedSrcs) {
+    if (!storedSrcs) return;
+    const sentSrcs = [...sentHtml.matchAll(IMG_SRC_RE)].map((m) => m[1]);
+    if (sentSrcs.length !== storedSrcs.length) return;
+    const changed = sentSrcs
+      .map((sent, i) => [sent, storedSrcs[i]])
+      .filter(([sent, stored]) => sent !== stored);
+    if (!changed.length) return;
+
+    if (unsaved.has(path)) {
+      let queued = unsaved.get(path);
+      for (const [sent, stored] of changed) queued = queued.split(`src="${sent}"`).join(`src="${stored}"`);
+      unsaved.set(path, queued);
+    }
+
+    // Only touch the editor if its images are exactly the ones just saved -
+    // if you've added or removed one since, the next save sorts it out.
+    if (path !== currentPath()) return;
+    const imgs = [...quill.root.querySelectorAll("img")];
+    const editorSrcs = imgs.map((img) => storageSrc(img.getAttribute("src") || ""));
+    if (editorSrcs.length !== sentSrcs.length || editorSrcs.some((src, i) => src !== sentSrcs[i])) return;
+    imgs.forEach((img, i) => {
+      if (storedSrcs[i] !== sentSrcs[i]) img.setAttribute("src", `/images/${storedSrcs[i]}`);
+    });
+  }
+
   function saveBody(path, html) {
     const body = { html };
     if (versions.has(path)) body.base_version = versions.get(path);
@@ -615,6 +649,7 @@
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           versions.set(path, data.version);
+          adoptStoredImageIds(path, html, data.image_srcs);
           // Only clear it if nothing newer for this page was queued meanwhile.
           if (unsaved.get(path) === html) unsaved.delete(path);
         } catch (err) {

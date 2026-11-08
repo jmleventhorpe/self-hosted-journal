@@ -127,7 +127,20 @@ def get_version(conn: sqlite3.Connection, date: str):
     return None if row is None else row[0]
 
 
-def save_entry(conn: sqlite3.Connection, key: bytes, date: str, html_text: str, images: dict):
+def image_owners(conn: sqlite3.Connection, image_ids) -> dict:
+    """{image_id: entry_date} for whichever of `image_ids` are stored."""
+    image_ids = list(image_ids)
+    if not image_ids:
+        return {}
+    placeholders = ",".join("?" * len(image_ids))
+    rows = conn.execute(
+        f"SELECT id, entry_date FROM images WHERE id IN ({placeholders})", image_ids
+    ).fetchall()
+    return dict(rows)
+
+
+def save_entry(conn: sqlite3.Connection, key: bytes, date: str, html_text: str, images: dict,
+               copies: dict = None):
     """
     Saves (or overwrites) the entry for `date`. `images` is
     {image_id: raw_bytes} for new or changed images. Previously stored
@@ -135,6 +148,11 @@ def save_entry(conn: sqlite3.Connection, key: bytes, date: str, html_text: str, 
     them - the web client only ever sends new images, referring to
     already-stored ones by id alone - and removed otherwise (e.g. the
     user deleted an image).
+
+    `copies` is {new_id: existing_id} for images this entry should get its
+    own copy of (e.g. ones brought in by importing the template), so it
+    doesn't depend on another page keeping them. The stored ciphertext is
+    copied as-is - every image is encrypted under the same key.
 
     Returns the entry's new version token. It's random rather than a
     counter so a stale copy can never match by coincidence - e.g. after the
@@ -159,6 +177,11 @@ def save_entry(conn: sqlite3.Connection, key: bytes, date: str, html_text: str, 
     ).fetchall():
         if img_id in images or img_id not in referenced_ids:
             conn.execute("DELETE FROM images WHERE id = ?", (img_id,))
+    for new_id, source_id in (copies or {}).items():
+        conn.execute(
+            "INSERT INTO images (id, entry_date, data) SELECT ?, ?, data FROM images WHERE id = ?",
+            (new_id, date, source_id),
+        )
     for img_id, raw_bytes in images.items():
         encrypted_data = encrypt_bytes(key, raw_bytes)
         conn.execute(

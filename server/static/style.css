@@ -20,6 +20,7 @@ button, select, input {
 
 .login-body {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -178,6 +179,10 @@ button, select, input {
 .app {
   display: flex;
   height: 100vh;
+  /* dvh: the height actually visible on phones, excluding the browser's
+     address bar - with plain vh the bottom of the page (the status bar)
+     sits underneath it. vh above is the fallback for older browsers. */
+  height: 100dvh;
 }
 
 .mobile-toolbar {
@@ -554,6 +559,7 @@ button, select, input {
   .app {
     flex-direction: column;
     height: 100vh;
+    height: 100dvh;
   }
 
   .mobile-toolbar {

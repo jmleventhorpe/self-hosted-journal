@@ -146,6 +146,24 @@ def _extract_inline_images(html):
     return html, images
 
 
+_IMG_TAG_SRC_RE = re.compile(r'<img\b[^>]*?\bsrc="([^"]*)"')
+
+
+def _own_copies_of_borrowed_images(page_key, html):
+    """Images referenced here but stored under another page - which is what
+    importing the template produces - get copied to this page under new
+    ids, so editing or deleting the other page can't break them here.
+    Returns (html pointing at the copies, {new_id: original_id})."""
+    owners = db.image_owners(_conn, set(db.IMG_SRC_RE.findall(html)))
+    copies = {}
+    for image_id, owner in owners.items():
+        if owner != page_key:
+            new_id = uuid.uuid4().hex
+            copies[new_id] = image_id
+            html = html.replace(f'src="{image_id}"', f'src="{new_id}"')
+    return html, copies
+
+
 def _guess_image_mime(raw: bytes) -> str:
     if raw.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png"
@@ -301,11 +319,16 @@ def _save_page(page_key):
             their_html, their_version = db.get_entry(_conn, key, page_key)
             return jsonify({"error": "conflict", "html": their_html, "version": their_version}), 409
         if html.strip():
-            version = db.save_entry(_conn, key, page_key, html, images)
+            html, copies = _own_copies_of_borrowed_images(page_key, html)
+            version = db.save_entry(_conn, key, page_key, html, images, copies)
         else:
             db.delete_entry(_conn, page_key)
             version = None
-    return jsonify({"ok": True, "version": version})
+    # Each <img>'s src as stored, in document order. Inline images and
+    # borrowed ones have just been given new ids; the client switches its
+    # editor over to them so the next save doesn't upload or copy them all
+    # over again.
+    return jsonify({"ok": True, "version": version, "image_srcs": _IMG_TAG_SRC_RE.findall(html)})
 
 
 @app.route("/entries/<date>", methods=["GET"])
