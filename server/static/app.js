@@ -1,5 +1,9 @@
 (() => {
   const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  // getDay(): 0=Sun, 1=Mon, ... 6=Sat. Tue/Thu/Sun get a highlighted
+  // background as the actually-used days; Sunday is deliberately excluded
+  // from the muted "weekend" treatment below since it's one of these.
+  const USAGE_DAYS = new Set([0, 2, 4]);
   const MONTHS = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December",
@@ -93,13 +97,7 @@
     });
     // Direct DOM mutation, not a Quill API call, so it doesn't fire
     // Quill's text-change event - schedule the save ourselves.
-    if (!loading) {
-      if (autosaveTimer) clearTimeout(autosaveTimer);
-      autosaveTimer = setTimeout(() => {
-        autosaveTimer = null;
-        saveCurrent();
-      }, AUTOSAVE_DELAY_MS);
-    }
+    scheduleSave();
   }
 
   const resizeImagesSelect = document.createElement("select");
@@ -155,11 +153,21 @@
     monthSelect.appendChild(opt);
   });
   const thisYear = new Date().getFullYear();
-  for (let y = thisYear; y < thisYear + 10; y++) {
-    const opt = document.createElement("option");
-    opt.value = y;
-    opt.textContent = y;
-    yearSelect.appendChild(opt);
+  let earliestEntryYear = thisYear;
+
+  // Spans from the earliest entry (or last year, if that's later) to next
+  // year, stretched to include whatever year the prev/next arrows have
+  // reached so the select never shows blank.
+  function renderYearOptions() {
+    const first = Math.min(earliestEntryYear, thisYear - 1, viewYear);
+    const last = Math.max(thisYear + 1, viewYear);
+    yearSelect.innerHTML = "";
+    for (let y = last; y >= first; y--) {
+      const opt = document.createElement("option");
+      opt.value = y;
+      opt.textContent = y;
+      yearSelect.appendChild(opt);
+    }
   }
 
   // "Special pages" are entries not tied to a date, edited in the same
@@ -177,6 +185,13 @@
   let entryDates = new Set();
   let loading = false; // guards against autosave firing while we're loading content
   let autosaveTimer = null;
+  // path -> storage HTML not yet confirmed saved by the server. Kept across
+  // page switches so a failed save is retried (and shown again if you go
+  // back to that page) rather than silently dropped.
+  const unsaved = new Map();
+  let saveChain = Promise.resolve(); // serializes saves so they can't land out of order
+  let retryTimer = null;
+  const RETRY_DELAY_MS = 5000;
 
   function currentPath() {
     return currentSpecialPage ? SPECIAL_PAGES[currentSpecialPage].path : `/entries/${selectedDate}`;
@@ -216,8 +231,9 @@
     return res;
   }
 
-  function setStatus(text, timeout) {
+  function setStatus(text, timeout, isError = false) {
     statusEl.textContent = text;
+    statusEl.classList.toggle("status-error", isError);
     if (timeout) {
       setTimeout(() => {
         if (statusEl.textContent === text) statusEl.textContent = "";
@@ -229,10 +245,12 @@
     const res = await api("/api/dates");
     const data = await res.json();
     entryDates = new Set(data.dates);
+    if (data.dates.length) earliestEntryYear = Number(data.dates[0].slice(0, 4));
     renderCalendar();
   }
 
   function renderCalendar() {
+    renderYearOptions();
     monthSelect.value = viewMonth;
     yearSelect.value = viewYear;
     calendarGrid.innerHTML = "";
@@ -257,7 +275,9 @@
       const cell = document.createElement("div");
       cell.className = "day";
       if (cellDate.getMonth() !== viewMonth) cell.classList.add("other-month");
-      if (dow === 0 || dow === 6) cell.classList.add("weekend");
+      if (dow === 6) cell.classList.add("weekend");
+      if (USAGE_DAYS.has(dow)) cell.classList.add("usage-day");
+      if (dateStr === formatDate(today)) cell.classList.add("today");
       if (!currentSpecialPage && dateStr === selectedDate) cell.classList.add("selected");
       cell.textContent = cellDate.getDate();
 
@@ -305,38 +325,90 @@
   }
 
   async function loadCurrent() {
+    const path = currentPath();
     loading = true;
-    const res = await api(currentPath());
-    const data = await res.json();
-    // Not quill.root.innerHTML = ... - that bypasses Quill's own Delta
-    // model, leaving it out of sync with the DOM. Quill's internal
-    // MutationObserver then "reconciles" the external change, which is
-    // what was intermittently inserting extra empty paragraphs. This
-    // (single-string-argument) form of dangerouslyPasteHTML replaces the
-    // whole document through Quill's normal setContents path instead.
-    quill.clipboard.dangerouslyPasteHTML(toDisplayHtml(data.html), "silent");
-    loading = false;
+    try {
+      const res = await api(path);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      // A previous save of this page that hasn't gone through yet is newer
+      // than what the server has - show that instead.
+      const html = unsaved.has(path) ? unsaved.get(path) : data.html;
+      // Not quill.root.innerHTML = ... - that bypasses Quill's own Delta
+      // model, leaving it out of sync with the DOM. Quill's internal
+      // MutationObserver then "reconciles" the external change, which is
+      // what was intermittently inserting extra empty paragraphs. This
+      // (single-string-argument) form of dangerouslyPasteHTML replaces the
+      // whole document through Quill's normal setContents path instead.
+      quill.clipboard.dangerouslyPasteHTML(toDisplayHtml(html), "silent");
+      quill.enable();
+    } catch (err) {
+      // Never leave the previous page's content editable under this page's
+      // label - the next autosave would write it to the wrong date.
+      quill.setText("", "silent");
+      quill.disable();
+      setStatus("Couldn't load this page - check your connection and try again.", 0, true);
+    } finally {
+      loading = false;
+    }
   }
 
-  async function saveCurrent() {
-    const html = toStorageHtml(quill.root.innerHTML);
-    await api(currentPath(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ html, images: {} }),
-    });
-    setStatus("Saved", 1500);
-    if (!currentSpecialPage) await refreshEntryDates();
+  // Quill's "empty" document is still <p><br></p>, which would otherwise be
+  // saved as a real (blank) entry and leave a dot on the calendar.
+  function editorStorageHtml() {
+    const isEmpty = !quill.getText().trim() && !quill.root.querySelector("img");
+    return isEmpty ? "" : toStorageHtml(quill.root.innerHTML);
   }
 
-  quill.on("text-change", () => {
+  function scheduleSave() {
     if (loading) return;
     if (autosaveTimer) clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => {
       autosaveTimer = null;
       saveCurrent();
     }, AUTOSAVE_DELAY_MS);
-  });
+  }
+
+  function saveCurrent() {
+    unsaved.set(currentPath(), editorStorageHtml());
+    return flushUnsaved();
+  }
+
+  // Sends everything in `unsaved`. Never rejects - failures stay in
+  // `unsaved`, are reported in the status bar, and are retried.
+  function flushUnsaved() {
+    saveChain = saveChain.then(async () => {
+      if (!unsaved.size) return;
+      if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+      setStatus("Saving…");
+      for (const [path, html] of [...unsaved]) {
+        try {
+          const res = await api(path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ html, images: {} }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          // Only clear it if nothing newer for this page was queued meanwhile.
+          if (unsaved.get(path) === html) unsaved.delete(path);
+        } catch (err) {
+          // Left in `unsaved` for the retry below.
+        }
+      }
+      if (unsaved.size) {
+        setStatus("Not saved - retrying…", 0, true);
+        retryTimer = setTimeout(() => { retryTimer = null; flushUnsaved(); }, RETRY_DELAY_MS);
+        return;
+      }
+      setStatus("Saved", 1500);
+      try { await refreshEntryDates(); } catch (err) { /* dots refresh on the next save */ }
+    });
+    return saveChain;
+  }
+
+  window.addEventListener("online", () => flushUnsaved());
+
+  quill.on("text-change", scheduleSave);
 
   document.getElementById("prev-month").addEventListener("click", () => {
     viewMonth -= 1;
@@ -378,14 +450,18 @@
     window.location.href = "/";
   });
 
-  window.addEventListener("beforeunload", () => {
+  window.addEventListener("beforeunload", (event) => {
     // Best-effort: fires synchronously enough for a same-origin POST via
     // sendBeacon, unlike a normal fetch which the browser may cancel.
-    if (autosaveTimer) {
-      const html = toStorageHtml(quill.root.innerHTML);
+    const alreadyFailing = unsaved.size > 0;
+    if (autosaveTimer) unsaved.set(currentPath(), editorStorageHtml());
+    unsaved.forEach((html, path) => {
       const blob = new Blob([JSON.stringify({ html, images: {} })], { type: "application/json" });
-      navigator.sendBeacon(currentPath(), blob);
-    }
+      navigator.sendBeacon(path, blob);
+    });
+    // Saves were already failing, so the beacon probably will too - ask
+    // before leaving rather than losing the text without a word.
+    if (alreadyFailing) event.preventDefault();
   });
 
   (async function init() {

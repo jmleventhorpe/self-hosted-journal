@@ -199,6 +199,13 @@ button, select, input {
 .calendar-grid .day.weekend {
   color: #999999;
 }
+.calendar-grid .day.usage-day {
+  background: #333333;
+}
+.calendar-grid .day.today {
+  border: 2px solid #007acc;
+  font-weight: 700;
+}
 .calendar-grid .day.selected {
   background: #094771;
   color: #ffffff;
@@ -276,6 +283,9 @@ button, select, input {
   color: #a0a0a0;
   font-size: 12px;
   min-height: 1.4em;
+}
+.status-bar.status-error {
+  color: #f48771;
 }
 
 /* --- Quill overrides to match the dark theme --- */

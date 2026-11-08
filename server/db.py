@@ -10,6 +10,7 @@ Images embedded in an entry are extracted and stored encrypted in
 itself is never stored, only a salt and a verifier token.
 """
 
+import re
 import sqlite3
 from crypto import (
     generate_salt,
@@ -24,6 +25,7 @@ from crypto import (
 
 TEMPLATE_KEY = "__template__"  # sentinel "date" in entries, never a real calendar day
 INFO_KEY = "__info__"  # sentinel "date" for the free-form reference/notes page
+IMG_SRC_RE = re.compile(r'src="([^"]+)"')  # same pattern as the desktop app's window.py
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -107,9 +109,11 @@ def get_entry(conn: sqlite3.Connection, key: bytes, date: str):
 def save_entry(conn: sqlite3.Connection, key: bytes, date: str, html_text: str, images: dict):
     """
     Saves (or overwrites) the entry for `date`. `images` is
-    {image_id: raw_bytes} for every image currently embedded in the
-    entry; any previously stored images for this date not present
-    in `images` are removed (e.g. the user deleted an image).
+    {image_id: raw_bytes} for new or changed images. Previously stored
+    images for this date are kept as long as the HTML still references
+    them - the web client only ever sends new images, referring to
+    already-stored ones by id alone - and removed otherwise (e.g. the
+    user deleted an image).
     """
     import datetime
 
@@ -122,7 +126,12 @@ def save_entry(conn: sqlite3.Connection, key: bytes, date: str, html_text: str, 
         (date, encrypted_content, now),
     )
 
-    conn.execute("DELETE FROM images WHERE entry_date = ?", (date,))
+    referenced_ids = set(IMG_SRC_RE.findall(html_text))
+    for (img_id,) in conn.execute(
+        "SELECT id FROM images WHERE entry_date = ?", (date,)
+    ).fetchall():
+        if img_id in images or img_id not in referenced_ids:
+            conn.execute("DELETE FROM images WHERE id = ?", (img_id,))
     for img_id, raw_bytes in images.items():
         encrypted_data = encrypt_bytes(key, raw_bytes)
         conn.execute(
