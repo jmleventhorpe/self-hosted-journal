@@ -5,6 +5,12 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# The server runs as this unprivileged user, not root (see entrypoint.py).
+# The app's own files stay root-owned, so it can't modify its own code.
+RUN useradd --system --no-create-home --shell /usr/sbin/nologin journal
+# No point trying to write .pyc files into the root-owned /app.
+ENV PYTHONDONTWRITEBYTECODE=1
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -17,5 +23,7 @@ VOLUME ["/data"]
 
 EXPOSE 8420
 
+# Starts as root just to hand /data to the journal user, then drops to it.
+ENTRYPOINT ["python", "/app/entrypoint.py"]
 # Single worker is required - see the note at the top of app.py.
 CMD ["gunicorn", "--workers", "1", "--threads", "4", "--bind", "0.0.0.0:8420", "app:app"]

@@ -71,6 +71,11 @@ registry or CI step. It deliberately publishes no host port: your reverse
 proxy (nginx, Caddy, whatever) reaches it over the internal Docker network
 by service name.
 
+The server runs as an unprivileged `journal` user, not root. The container
+starts as root only for a moment, to hand `/data` to that user (volumes
+from older images hold root-owned files), then drops to it - see
+`server/entrypoint.py`.
+
 ### Reachability
 
 The server has no built-in exposure story of its own - LAN-only, behind a
