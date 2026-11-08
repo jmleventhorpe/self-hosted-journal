@@ -61,6 +61,10 @@ _SESSION_LIFETIME_LABEL = f"{_hours:g} hour{'' if _hours == 1 else 's'}"  # "2 h
 # testing (and first-time LAN setup before HTTPS is wired up) isn't broken
 # by the browser silently refusing to send the cookie.
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("JOURNAL_COOKIE_SECURE") == "1"
+# Lax: the browser won't attach the cookie to POSTs started by other sites.
+# Not enough alone - "site" includes sibling subdomains (other self-hosted
+# services on the same domain) - hence the origin check in _reject_cross_origin.
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 _conn = db.connect(str(DB_PATH))
 _conn_lock = threading.Lock()  # sqlite3 connections aren't safe to share across threads unguarded
@@ -114,6 +118,44 @@ def _current_key():
     with _sessions_lock:
         entry = _sessions.get(session.get("sid"))
     return entry[0] if entry else None
+
+
+_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+@app.before_request
+def _reject_cross_origin():
+    """CSRF protection: only this app's own pages may change anything.
+
+    Browsers label every request with Sec-Fetch-Site; anything other than
+    "same-origin" on a state-changing request is refused. Unlike comparing
+    Origin with Host, this keeps working behind a reverse proxy that
+    rewrites Host. Browsers too old to send it (pre-2023 Safari) still send
+    Origin on cross-site POSTs, so fall back to comparing that. A request
+    with neither isn't from a browser at all (curl etc.), and CSRF needs a
+    browser carrying your cookie, so it's let through."""
+    if request.method in _SAFE_METHODS:
+        return None
+    fetch_site = request.headers.get("Sec-Fetch-Site")
+    if fetch_site is not None:
+        if fetch_site != "same-origin":
+            abort(403)
+        return None
+    origin = request.headers.get("Origin")
+    if origin is not None and origin != request.host_url.rstrip("/"):
+        abort(403)
+    return None
+
+
+def _json_body() -> dict:
+    """The request's JSON object. Only an application/json body counts -
+    other sites can't send that cross-origin without CORS permission, which
+    this server never grants. Anything else is refused rather than read as
+    an empty body, which for a save would mean deleting the entry."""
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        abort(415)
+    return body
 
 
 def require_auth(view):
@@ -196,7 +238,7 @@ def index():
 
 @app.route("/api/setup", methods=["POST"])
 def setup_route():
-    body = request.get_json(force=True, silent=True) or {}
+    body = _json_body()
     password = body.get("password", "")
     if len(password) < 4:
         return jsonify({"error": "Password must be at least 4 characters"}), 400
@@ -211,7 +253,7 @@ def setup_route():
 
 @app.route("/login", methods=["POST"])
 def login_route():
-    body = request.get_json(force=True, silent=True) or {}
+    body = _json_body()
     password = body.get("password", "")
 
     with _conn_lock:
@@ -271,7 +313,7 @@ def search_route():
     query must appear somewhere in the entry (in any order). Decrypts the
     whole journal per search, which is fine at one person's scale."""
     key = _current_key()
-    body = request.get_json(force=True, silent=True) or {}
+    body = _json_body()
     terms = [t for t in str(body.get("q", "")).lower().split() if t]
     if not terms:
         return jsonify({"results": [], "truncated": False})
@@ -312,7 +354,7 @@ def _save_page(page_key):
     `base_version` at all (e.g. from a tab opened before this existed) skips
     the check."""
     key = _current_key()
-    body = request.get_json(force=True, silent=True) or {}
+    body = _json_body()
     html, images = _extract_inline_images(body.get("html") or "")
     with _conn_lock:
         if "base_version" in body and body["base_version"] != db.get_version(_conn, page_key):

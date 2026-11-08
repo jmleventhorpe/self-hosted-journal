@@ -960,18 +960,28 @@
   });
 
   window.addEventListener("beforeunload", (event) => {
-    // Best-effort: fires synchronously enough for a same-origin POST via
-    // sendBeacon, unlike a normal fetch which the browser may cancel.
-    const alreadyFailing = unsaved.size > 0;
+    // Best-effort: a keepalive fetch outlives the page, unlike a normal one
+    // which the browser cancels on unload. (Not sendBeacon - it can't send
+    // an application/json body, which the server requires.) Browsers cap
+    // keepalive bodies at 64KB; a bigger one throws and relies on the
+    // prompt below.
+    let warn = unsaved.size > 0; // saves were already failing
     if (autosaveTimer) unsaved.set(currentPath(), editorStorageHtml());
     unsaved.forEach((html, path) => {
       if (conflicts.has(path)) return; // would only be refused again
-      const blob = new Blob([saveBody(path, html)], { type: "application/json" });
-      navigator.sendBeacon(path, blob);
+      try {
+        fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: saveBody(path, html),
+          keepalive: true,
+        }).catch(() => {});
+      } catch (err) {
+        warn = true; // over the keepalive size limit - this one won't go
+      }
     });
-    // Saves were already failing, so the beacon probably will too - ask
-    // before leaving rather than losing the text without a word.
-    if (alreadyFailing) event.preventDefault();
+    // Ask before leaving rather than losing text without a word.
+    if (warn) event.preventDefault();
   });
 
   (async function init() {

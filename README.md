@@ -126,6 +126,10 @@ is only ever ciphertext without the password.
   the browser, and is never written to disk.
 - A login is a hard 2 hours (`SESSION_LIFETIME` in `server/app.py`), not an
   idle timeout - after that the server forgets the key and the page locks.
+- Only the app's own pages can change anything (CSRF protection): the
+  session cookie is `SameSite=Lax`, POSTs must be `application/json`, and
+  requests the browser marks as coming from another origin - including
+  sibling subdomains - are refused.
 - No custom crypto anywhere - both scrypt and Fernet are established,
   independently reviewed primitives, not something invented for this app.
 - This is a deliberately low-effort security posture for a personal
