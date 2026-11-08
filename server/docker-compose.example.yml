@@ -9,7 +9,7 @@ services:
       # subdirectory `server` (Docker's git-context syntax; no separate
       # registry or CI needed). `docker compose build journal` re-pulls
       # and rebuilds from whatever's on that branch right now.
-      context: https://github.com/jmleventhorpe/Journal.git#main:server
+      context: https://github.com/jmleventhorpe/self-hosted-journal.git#main:server
       # Building from a local clone instead is just:
       # context: ./Journal/server
     restart: unless-stopped

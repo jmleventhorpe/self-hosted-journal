@@ -1,4 +1,4 @@
-# Journal
+# Self-Hosted Journal
 
 A small, encrypted journal you use in the browser: a Flask server that owns
 the database, does all the encryption, and serves the web app.
@@ -65,7 +65,7 @@ survives container rebuilds.
 `server/Dockerfile` builds a self-contained image from the `server/`
 directory alone. `server/docker-compose.example.yml` is a service block
 meant to be merged into an existing compose stack - it builds straight from
-GitHub (`context: https://github.com/<you>/Journal.git#main:server`), so
+GitHub (`context: https://github.com/<you>/self-hosted-journal.git#main:server`), so
 `docker compose build journal` re-pulls and rebuilds without a separate
 registry or CI step. It deliberately publishes no host port: your reverse
 proxy (nginx, Caddy, whatever) reaches it over the internal Docker network
