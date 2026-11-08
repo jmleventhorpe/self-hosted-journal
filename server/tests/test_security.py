@@ -73,3 +73,25 @@ def test_journal_data_is_not_cached(entry, path, cache_control):
 def test_page_loads_no_third_party_code(entry):
     page = entry.get("/").get_data(as_text=True)
     assert "https://" not in page
+
+
+@pytest.mark.parametrize("path", ["/", DAY, "/static/app.js"])
+def test_security_headers_on_every_response(entry, path):
+    headers = entry.get(path).headers
+    csp = headers["Content-Security-Policy"]
+    assert "script-src 'self'" in csp and "frame-ancestors 'none'" in csp
+    assert "unsafe-inline" not in csp.split("script-src")[1].split(";")[0]
+    assert headers["X-Content-Type-Options"] == "nosniff"
+    assert headers["Referrer-Policy"] == "no-referrer"
+
+
+@pytest.mark.parametrize("logged_in", [False, True])
+def test_pages_have_no_inline_script(new_client, logged_in):
+    # The CSP would block it, breaking the page.
+    import re
+    c = new_client()
+    if logged_in:
+        c.post("/api/setup", json={"password": PASSWORD})
+    page = c.get("/").get_data(as_text=True)
+    assert not re.search(r"<script(?![^>]*\bsrc=)[^>]*>", page)
+    assert not re.search(r"\son[a-z]+=", page)  # onclick= etc. are inline script too

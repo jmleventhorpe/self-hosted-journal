@@ -158,12 +158,40 @@ def _reject_cross_origin():
     return None
 
 
+# Content-Security-Policy: the browser refuses anything this server didn't
+# serve as a file - so even if some HTML got into an entry, it couldn't run
+# script or send your journal anywhere.
+#  - script-src 'self': no inline <script>, no eval, no third-party code.
+#  - style-src allows inline style attributes: Quill and pasted text use
+#    them, and styles can't run code.
+#  - img-src data:: a newly inserted image is a data: URI until it's saved.
+#  - frame-ancestors 'none': other sites can't embed the journal in a frame
+#    to trick you into clicking things (clickjacking).
+_CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+])
+
+
 @app.after_request
-def _no_store(response):
-    """Keep decrypted entries, images and search results out of the
-    browser's on-disk cache, where they'd outlive logging out. Only the app's
-    own static files (code and styles, nothing from the journal) may be
-    cached."""
+def _security_headers(response):
+    response.headers["Content-Security-Policy"] = _CSP
+    # Serve files only as the type the server says, never as something the
+    # browser guesses (e.g. an "image" that's really HTML).
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    # Following a link out of an entry shouldn't tell that site where you
+    # came from.
+    response.headers["Referrer-Policy"] = "no-referrer"
+    # Keep decrypted entries, images and search results out of the
+    # browser's on-disk cache, where they'd outlive logging out. Only the
+    # app's own static files (code and styles, nothing from the journal)
+    # may be cached.
     if not request.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-store"
     return response
