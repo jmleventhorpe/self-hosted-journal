@@ -80,3 +80,7 @@ pytest          # about a second, against throwaway journals
 | `server/db.py`, `server/crypto.py` | Storage and encryption |
 | `server/static/js/` | The page's code, as ES modules with no build step (`main.js` lists them) |
 | `server/tests/` | pytest suite |
+
+## Licence
+
+[MIT](LICENSE)
